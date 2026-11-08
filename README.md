@@ -161,6 +161,12 @@ interleave with the full cycle instead of queueing behind it; once the fast lane
 full cycle stops re-reading those inputs (shorter cycle, and a fresh fast value is never
 overwritten by an older full-cycle one). Cost: ~10 small UDP exchanges per second.
 
+## See also
+
+Not on Home Assistant, or want arbitrary PLC variables on MQTT for older devices which do not
+support MQTT? [plccoms-mqtt-bridge](https://github.com/ocervinka/plccoms-mqtt-bridge) bridges
+Teco's PLCComS to an MQTT broker (openHAB, Node-RED, Home Assistant MQTT).
+
 ## License
 
 [MIT](LICENSE)

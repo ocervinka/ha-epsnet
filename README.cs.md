@@ -58,6 +58,12 @@ berou z názvů proměnných v programu PLC, takže se zobrazí přesně tak, ja
 
 Podrobnosti (diagnostika, testy, omezení) jsou v [anglickém README](README.md).
 
+## Viz také
+
+Nepoužíváte Home Assistant, nebo potřebujete libovolné proměnné PLC v MQTT u starších zařízení,
+která MQTT nepodporují? [plccoms-mqtt-bridge](https://github.com/ocervinka/plccoms-mqtt-bridge)
+propojí PLCComS od Teco s MQTT brokerem (openHAB, Node-RED, Home Assistant MQTT).
+
 ## Licence
 
 [MIT](LICENSE)
