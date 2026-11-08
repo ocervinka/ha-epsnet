@@ -69,7 +69,7 @@ polling intervals, including the fast lane below. *Reconfigure* changes host and
 ## Languages
 
 The setup screens, options, repair notices and diagnostic sensor names are translated into
-**English** and **Czech**; Home Assistant picks the language from your user profile. Entity names
+**English**, **Czech** and **Slovak**; Home Assistant picks the language from your user profile. Entity names
 for lights, switches and inputs come from the variable names in your PLC program, so they appear
 exactly as you named them there.
 

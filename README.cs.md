@@ -52,7 +52,7 @@ znovu načíst a změnit intervaly čtení včetně rychlého čtení vstupů (d
 
 ## Jazyky
 
-Obrazovky nastavení, volby, upozornění a názvy diagnostických senzorů jsou česky i anglicky;
+Obrazovky nastavení, volby, upozornění a názvy diagnostických senzorů jsou anglicky, česky a slovensky;
 Home Assistant použije jazyk z vašeho uživatelského profilu. Názvy světel, spínačů a vstupů se
 berou z názvů proměnných v programu PLC, takže se zobrazí přesně tak, jak jsou pojmenované tam.
 
