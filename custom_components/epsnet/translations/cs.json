@@ -9,7 +9,7 @@
           "host": "Adresa PLC",
           "port": "Port PLC",
           "local_port": "Místní zdrojový port UDP",
-          "scan_interval": "Prodleva po každém čtení (milisekundy, 0 = hned)"
+          "scan_interval": "Prodleva po každém čtení (milisekundy, 0 = bez prodlevy)"
         }
       },
       "source": {
@@ -85,7 +85,7 @@
       "settings": {
         "title": "Čtení",
         "data": {
-          "scan_interval": "Prodleva po každém čtení (milisekundy, 0 = hned)",
+          "scan_interval": "Prodleva po každém čtení (milisekundy, 0 = bez prodlevy)",
           "fast_scan_interval": "Rychlé čtení binárních vstupů — tlačítka, PIR čidla (milisekundy, 0 = vypnuto; doporučeno 100)"
         }
       },

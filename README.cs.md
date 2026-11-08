@@ -1,6 +1,6 @@
 # ha-epsnet
 
-Česky · [English](README.md)
+[English](README.md) · Česky
 
 Doplněk (custom integrace) pro Home Assistant, který komunikuje s PLC Tecomat Foxtrot / iNELS
 přímo protokolem EPSNET přes UDP — bez brány PLCComS.
@@ -16,7 +16,7 @@ instalací jsou vítané — k hlášení (issue) prosím přiložte stažené d
 - při nastavení projde PLC a zjistí, které moduly CIB jsou skutečně připojené
 - mapu publikovaných proměnných načte přímo z běžícího programu v PLC (nebo z nahraného `.pub`)
 - entity pro světla, spínače, binární vstupy (tlačítka, PIR, magnetické kontakty) a teploty
-- rychlé čtení binárních vstupů (např. každých 100 ms), aby se nepropásl krátký stisk tlačítka
+- rychlé čtení binárních vstupů (např. každých 100 ms), aby se zachytil i krátký stisk tlačítka
 - diagnostika a senzory s dobou čtení
 
 Podporované moduly: `SA2-04M`, `SA2-012M`, `DA2-22M`, `WSB2-20`, `WSB2-40`, `IM2-40B`,
@@ -41,7 +41,7 @@ Zkopírujte složku `custom_components/epsnet` do konfigurační složky Home As
 **Nastavení → Zařízení a služby → Přidat integraci → EPSNET**, potom:
 
 1. **Připojení** — název, adresa PLC, port EPSNET UDP (výchozí `61682`), místní zdrojový port UDP
-   (výchozí `61681`) a prodleva po každém čtení v milisekundách (výchozí `500`, `0` = hned).
+   (výchozí `61681`) a prodleva po každém čtení v milisekundách (výchozí `500`, `0` = bez prodlevy).
 2. **Mapa proměnných** — **načíst z PLC** (doporučeno) nebo **nahrát exportovaný `.pub` / `.piz` /
    `.zip`**.
 3. **Potvrzení** — ukáže identifikaci PLC, počet nalezených modulů a publikovaných bodů.

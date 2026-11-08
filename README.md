@@ -1,6 +1,6 @@
 # ha-epsnet
 
-[Česky](README.cs.md) · English
+English · [Česky](README.cs.md)
 
 Home Assistant custom integration for Tecomat Foxtrot / iNELS PLCs, talking to the PLC
 directly over EPSNET UDP — no PLCComS gateway needed.
