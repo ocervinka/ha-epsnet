@@ -1,0 +1,189 @@
+"""In-process Home Assistant integration tests (pytest-homeassistant-custom-component).
+
+The EPSNET client is patched with a small synthetic dataset (no PLC, no sockets,
+no home data — reuses the catalog test fixtures), so the *real* config flow, entry
+setup, platforms, coordinator, and service calls run inside a real in-process
+HomeAssistant. This is the HA-idiomatic "tier 3": device I/O is mocked, everything
+above it is exercised for real.
+"""
+from __future__ import annotations
+
+import asyncio
+import contextlib
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+
+from custom_components.epsnet.const import DOMAIN
+from custom_components.epsnet.pubfile import parse_pub_text
+
+from test_catalog import EXACT_MODEL_FIXTURE, EXACT_RUNTIME_INVENTORY
+
+SYNTH_ENTRIES = parse_pub_text(EXACT_MODEL_FIXTURE)
+SYNTH_INVENTORY = EXACT_RUNTIME_INVENTORY
+_CLIENT = "custom_components.epsnet.epsnet_udp.EpsnetUdpClient"
+
+
+@pytest.fixture(autouse=True)
+def _auto_enable_custom_integrations(enable_custom_integrations):
+    yield
+
+
+def _patch_client(set_value: AsyncMock):
+    """Patch the client so setup runs against synthetic data, not a socket.
+
+    The setup calls yield (``asyncio.sleep(0)``) so the config-flow progress task
+    behaves like the real (slow) fetch instead of completing eagerly and skipping
+    the progress step.
+    """
+
+    async def _inventory(*_a, **_k):
+        await asyncio.sleep(0)
+        return SYNTH_INVENTORY
+
+    async def _fetch(*_a, **_k):
+        await asyncio.sleep(0)
+        return ("SIM PLC", SYNTH_ENTRIES)
+
+    async def _get_values(entries, *_a, **_k):
+        # Return a value for every polled entry so entities are *available*
+        # (HA skips turn_on on unavailable entities).
+        return {e.name: 0 for e in entries}
+
+    return patch.multiple(
+        _CLIENT,
+        discover_runtime_inventory=AsyncMock(side_effect=_inventory),
+        async_fetch_pub_from_plc=AsyncMock(side_effect=_fetch),
+        get_values=AsyncMock(side_effect=_get_values),
+        set_value=set_value,
+        async_close=AsyncMock(),
+    )
+
+
+async def _run_discover_flow(hass: HomeAssistant) -> dict:
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    assert result["type"] == FlowResultType.FORM and result["step_id"] == "user"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"name": "EPSNET", "host": "127.0.0.1", "port": 61682,
+         "local_port": 61681, "scan_interval": 500},
+    )
+    assert result["type"] == FlowResultType.MENU and result["step_id"] == "source"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "discover"}
+    )
+    # discover runs run_setup under a progress step; let the task finish then advance.
+    assert result["type"] == FlowResultType.SHOW_PROGRESS
+    await hass.async_block_till_done()
+    result = await hass.config_entries.flow.async_configure(result["flow_id"])
+    assert result["type"] == FlowResultType.FORM and result["step_id"] == "confirm"
+    assert result["description_placeholders"]["source"] == "plc"
+
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    return result
+
+
+async def test_discover_flow_sets_up_entry_and_entities(hass: HomeAssistant) -> None:
+    with _patch_client(AsyncMock()):
+        result = await _run_discover_flow(hass)
+        await hass.async_block_till_done()
+
+        entry = result["result"]
+        assert entry.state is ConfigEntryState.LOADED
+        # frozen map persisted (no runtime re-fetch relies on this)
+        assert entry.data["map"]["source"] == "plc"
+        assert entry.data["map"]["entries"]
+
+        lights = [s for s in hass.states.async_all() if s.entity_id.startswith("light.")]
+        switches = [s for s in hass.states.async_all() if s.entity_id.startswith("switch.")]
+        assert lights, "expected light entities from the synthetic catalog"
+        assert switches, "expected switch entities from the synthetic catalog"
+
+
+async def test_turn_on_reaches_the_client_write(hass: HomeAssistant) -> None:
+    set_value = AsyncMock()
+    with _patch_client(set_value):
+        await _run_discover_flow(hass)
+        await hass.async_block_till_done()
+
+        # Only entities backed by an _ON command write; turn each on until one
+        # routes through the client, proving the HA service -> client wiring.
+        targets = [
+            s.entity_id for s in hass.states.async_all()
+            if s.entity_id.split(".")[0] in ("switch", "light")
+        ]
+        assert targets, "expected switch/light entities"
+        for eid in targets:
+            with contextlib.suppress(Exception):
+                await hass.services.async_call(
+                    eid.split(".")[0], "turn_on", {"entity_id": eid}, blocking=True
+                )
+            if set_value.await_count:
+                break
+        await hass.async_block_till_done()
+        assert set_value.await_count >= 1, "turn_on should reach the client write path"
+
+
+async def test_poll_metric_sensors_take_their_names_from_translations(
+    hass: HomeAssistant,
+) -> None:
+    with _patch_client(AsyncMock()):
+        await _run_discover_flow(hass)
+        await hass.async_block_till_done()
+
+        names = {
+            s.attributes.get("friendly_name") for s in hass.states.async_all("sensor")
+        }
+        assert any(n and n.endswith("Average read duration") for n in names), names
+        assert any(n and n.endswith("Read block count") for n in names), names
+
+
+async def test_unreachable_plc_reshows_the_source_menu_with_a_warning(
+    hass: HomeAssistant,
+) -> None:
+    from custom_components.epsnet.epsnet_udp import EpsnetError
+
+    with _patch_client(AsyncMock()), patch(
+        f"{_CLIENT}.discover_runtime_inventory", AsyncMock(side_effect=EpsnetError("x"))
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": "user"}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"name": "EPSNET", "host": "127.0.0.1", "port": 61682,
+             "local_port": 61681, "scan_interval": 500},
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"next_step_id": "discover"}
+        )
+        await hass.async_block_till_done()
+        # Re-fetching the flow (what the frontend does) re-runs the shown step.
+        for _ in range(2):
+            result = await hass.config_entries.flow.async_configure(result["flow_id"])
+            assert result["type"] == FlowResultType.MENU
+            assert result["step_id"] == "source_cannot_connect"
+
+        # Picking an option from the warning menu still works.
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"next_step_id": "upload"}
+        )
+        assert result["type"] == FlowResultType.FORM and result["step_id"] == "upload"
+
+
+async def test_czech_install_gets_czech_sensor_names(hass: HomeAssistant) -> None:
+    hass.config.language = "cs"
+    with _patch_client(AsyncMock()):
+        await _run_discover_flow(hass)
+        await hass.async_block_till_done()
+
+        names = {
+            s.attributes.get("friendly_name") for s in hass.states.async_all("sensor")
+        }
+        assert any(n and n.endswith("Průměrná doba čtení") for n in names), names

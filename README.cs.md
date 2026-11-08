@@ -1,0 +1,63 @@
+# ha-epsnet
+
+Česky · [English](README.md)
+
+Doplněk (custom integrace) pro Home Assistant, který komunikuje s PLC Tecomat Foxtrot / iNELS
+přímo protokolem EPSNET přes UDP — bez brány PLCComS.
+
+Projekt není nijak spojen se společností Teco a.s. ani jí podporován; Tecomat, Foxtrot a iNELS
+jsou její ochranné známky. Podpora EPSNET vznikla kvůli interoperabilitě a je vyzkoušená na jedné
+instalaci (Foxtrot CP-2000 s moduly níže, Home Assistant 2026.2 a novější). Zkušenosti z jiných
+instalací jsou vítané — k hlášení (issue) prosím přiložte stažené diagnostiky.
+
+## Co umí
+
+- přímá komunikace EPSNET UDP, PLCComS není potřeba
+- při nastavení projde PLC a zjistí, které moduly CIB jsou skutečně připojené
+- mapu publikovaných proměnných načte přímo z běžícího programu v PLC (nebo z nahraného `.pub`)
+- entity pro světla, spínače, binární vstupy (tlačítka, PIR, magnetické kontakty) a teploty
+- rychlé čtení binárních vstupů (např. každých 100 ms), aby se nepropásl krátký stisk tlačítka
+- diagnostika a senzory s dobou čtení
+
+Podporované moduly: `SA2-04M`, `SA2-012M`, `DA2-22M`, `WSB2-20`, `WSB2-40`, `IM2-40B`,
+`IM2-140M`, `C-IT-0200S`.
+
+## Instalace
+
+### HACS
+
+1. V HACS přidejte `https://github.com/ocervinka/ha-epsnet` jako vlastní repozitář (custom
+   repository) s kategorií **Integration**.
+2. Nainstalujte **EPSNET**.
+3. Restartujte Home Assistant.
+
+### Ručně
+
+Zkopírujte složku `custom_components/epsnet` do konfigurační složky Home Assistantu jako
+`custom_components/epsnet` a restartujte Home Assistant.
+
+## Nastavení
+
+**Nastavení → Zařízení a služby → Přidat integraci → EPSNET**, potom:
+
+1. **Připojení** — název, adresa PLC, port EPSNET UDP (výchozí `61682`), místní zdrojový port UDP
+   (výchozí `61681`) a prodleva po každém čtení v milisekundách (výchozí `500`, `0` = hned).
+2. **Mapa proměnných** — **načíst z PLC** (doporučeno) nebo **nahrát exportovaný `.pub` / `.piz` /
+   `.zip`**.
+3. **Potvrzení** — ukáže identifikaci PLC, počet nalezených modulů a publikovaných bodů.
+
+Mapa se uloží do konfigurace integrace. Když se program v PLC změní, integrace to pozná (CRC
+mapy), novou mapu použije a zobrazí upozornění v Opravách. Přes **Nastavit** u integrace lze mapu
+znovu načíst a změnit intervaly čtení včetně rychlého čtení vstupů (doporučeno 100 ms).
+
+## Jazyky
+
+Obrazovky nastavení, volby, upozornění a názvy diagnostických senzorů jsou česky i anglicky;
+Home Assistant použije jazyk z vašeho uživatelského profilu. Názvy světel, spínačů a vstupů se
+berou z názvů proměnných v programu PLC, takže se zobrazí přesně tak, jak jsou pojmenované tam.
+
+Podrobnosti (diagnostika, testy, omezení) jsou v [anglickém README](README.md).
+
+## Licence
+
+[MIT](LICENSE)

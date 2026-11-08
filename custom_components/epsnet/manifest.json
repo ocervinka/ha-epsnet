@@ -1,0 +1,20 @@
+{
+  "domain": "epsnet",
+  "name": "EPSNET",
+  "codeowners": [
+    "@ocervinka"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "file_upload"
+  ],
+  "documentation": "https://github.com/ocervinka/ha-epsnet",
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/ocervinka/ha-epsnet/issues",
+  "loggers": [
+    "custom_components.epsnet"
+  ],
+  "requirements": [],
+  "version": "0.1.0"
+}

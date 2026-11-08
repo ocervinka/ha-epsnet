@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ha-epsnet"
+version = "0.1.0"
+description = "Home Assistant custom component for Tecomat/iNELS EPSNET runtime-discovered integrations"
+readme = "README.md"
+requires-python = ">=3.12"
+
+[project.optional-dependencies]
+# pytest-homeassistant-custom-component brings Home Assistant + the HA test
+# fixtures (hass, enable_custom_integrations) and, transitively, pytest,
+# pytest-asyncio and pytest-socket. This pin maps to Home Assistant 2026.2.x
+# (the reference deployment) and requires Python 3.13.
+dev = [
+  "pytest-homeassistant-custom-component==0.13.316",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.setuptools]
+include-package-data = true

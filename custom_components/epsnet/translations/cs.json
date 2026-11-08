@@ -1,0 +1,133 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nastavení EPSNET",
+        "description": "Zadejte, jak se připojit k PLC přes EPSNET UDP. Mapa publikovaných proměnných se načte v dalším kroku.",
+        "data": {
+          "name": "Název",
+          "host": "Adresa PLC",
+          "port": "Port PLC",
+          "local_port": "Místní zdrojový port UDP",
+          "scan_interval": "Prodleva po každém čtení (milisekundy, 0 = hned)"
+        }
+      },
+      "source": {
+        "title": "Zdroj mapy proměnných",
+        "description": "Načtěte mapu publikovaných proměnných přímo z PLC (doporučeno), nebo nahrajte exportovaný soubor .pub.",
+        "menu_options": {
+          "discover": "Načíst z PLC (doporučeno)",
+          "upload": "Nahrát soubor .pub"
+        }
+      },
+      "upload": {
+        "title": "Nahrát soubor .pub",
+        "description": "Nahrajte exportovanou mapu .pub / .piz / .zip. PLC se i tak projde živě, aby se mapa spárovala se skutečnými moduly.",
+        "data": {
+          "map_file": "Exportovaný soubor s mapou"
+        }
+      },
+      "confirm": {
+        "title": "Potvrzení nastavení EPSNET",
+        "description": "Zdroj mapy: {source}\nIdentifikace PLC: {ident}\nModuly: {devices}\nPublikované body: {points}\n\nVytvořit integraci?"
+      },
+      "reconfigure": {
+        "title": "Změna připojení EPSNET",
+        "description": "Změňte, jak se Home Assistant připojuje k PLC. Uložená mapa proměnných zůstane; pro obnovení použijte Nastavit → Znovu načíst.",
+        "data": {
+          "host": "Adresa PLC",
+          "port": "Port PLC",
+          "local_port": "Místní zdrojový port UDP"
+        }
+      },
+      "source_plc_busy": {
+        "title": "Zdroj mapy proměnných",
+        "description": "Načtěte mapu publikovaných proměnných přímo z PLC (doporučeno), nebo nahrajte exportovaný soubor .pub.\n\n⚠️ PLC je obsazené (výhradní spojení drží jiný program, např. FoxTool). Zavřete ostatní nástroje a zkuste to znovu.",
+        "menu_options": {
+          "discover": "Načíst z PLC (doporučeno)",
+          "upload": "Nahrát soubor .pub"
+        }
+      },
+      "source_cannot_connect": {
+        "title": "Zdroj mapy proměnných",
+        "description": "Načtěte mapu publikovaných proměnných přímo z PLC (doporučeno), nebo nahrajte exportovaný soubor .pub.\n\n⚠️ PLC nelze kontaktovat. Zkontrolujte adresu a porty a zkuste to znovu — nebo nahrajte soubor .pub.",
+        "menu_options": {
+          "discover": "Načíst z PLC (doporučeno)",
+          "upload": "Nahrát soubor .pub"
+        }
+      }
+    },
+    "progress": {
+      "run_setup": "Připojuji se k PLC a čtu mapu proměnných… {progress}"
+    },
+    "error": {
+      "invalid_host": "Zadejte název nebo IP adresu PLC.",
+      "path_not_found": "Nahraný soubor nelze přečíst.",
+      "invalid_pub": "Nahraný soubor není platná mapa .pub.",
+      "cannot_connect": "PLC nelze kontaktovat. Zkontrolujte adresu a porty.",
+      "plc_busy": "PLC je obsazené (výhradní spojení drží jiný program, např. FoxTool). Zavřete ostatní nástroje a zkuste to znovu."
+    },
+    "abort": {
+      "already_configured": "Toto zařízení EPSNET už je nastavené.",
+      "reconfigure_successful": "Připojení EPSNET bylo změněno."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "EPSNET",
+        "description": "Zdroj: {source} · PLC: {ident} · {points} bodů · CRC {crc}",
+        "menu_options": {
+          "reimport_plc": "Znovu načíst mapu proměnných z PLC",
+          "settings": "Změnit intervaly čtení"
+        }
+      },
+      "settings": {
+        "title": "Čtení",
+        "data": {
+          "scan_interval": "Prodleva po každém čtení (milisekundy, 0 = hned)",
+          "fast_scan_interval": "Rychlé čtení binárních vstupů — tlačítka, PIR čidla (milisekundy, 0 = vypnuto; doporučeno 100)"
+        }
+      },
+      "init_plc_busy": {
+        "title": "EPSNET",
+        "description": "Zdroj: {source} · PLC: {ident} · {points} bodů · CRC {crc}\n\n⚠️ PLC je obsazené (výhradní spojení drží jiný program). Zkuste to znovu.",
+        "menu_options": {
+          "reimport_plc": "Znovu načíst mapu proměnných z PLC",
+          "settings": "Změnit intervaly čtení"
+        }
+      },
+      "init_cannot_connect": {
+        "title": "EPSNET",
+        "description": "Zdroj: {source} · PLC: {ident} · {points} bodů · CRC {crc}\n\n⚠️ PLC nelze kontaktovat, mapu se nepodařilo znovu načíst.",
+        "menu_options": {
+          "reimport_plc": "Znovu načíst mapu proměnných z PLC",
+          "settings": "Změnit intervaly čtení"
+        }
+      }
+    },
+    "progress": {
+      "run_setup": "Znovu čtu mapu proměnných z PLC…"
+    }
+  },
+  "issues": {
+    "map_changed": {
+      "title": "Program PLC EPSNET se změnil",
+      "description": "Mapa publikovaných proměnných v PLC se od posledního načtení změnila (CRC {old_crc} → {new_crc}, {points} bodů). Nová mapa byla použita. Zkontrolujte entity a automatizace, zda se adresy proměnných neposunuly."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "average_read_duration_ms": { "name": "Průměrná doba čtení" },
+      "minimum_read_duration_ms": { "name": "Nejkratší doba čtení" },
+      "maximum_read_duration_ms": { "name": "Nejdelší doba čtení" },
+      "average_cycle_duration_ms": { "name": "Průměrná doba cyklu" },
+      "minimum_cycle_duration_ms": { "name": "Nejkratší doba cyklu" },
+      "maximum_cycle_duration_ms": { "name": "Nejdelší doba cyklu" },
+      "average_block_duration_ms": { "name": "Průměrná doba čtení bloku" },
+      "minimum_block_duration_ms": { "name": "Nejkratší doba čtení bloku" },
+      "maximum_block_duration_ms": { "name": "Nejdelší doba čtení bloku" },
+      "block_count": { "name": "Počet čtených bloků" }
+    }
+  }
+}

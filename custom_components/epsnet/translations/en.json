@@ -1,0 +1,153 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up EPSNET",
+        "description": "Enter how to reach the PLC over EPSNET UDP. The published-variable map is discovered in the next step.",
+        "data": {
+          "name": "Name",
+          "host": "PLC host",
+          "port": "PLC port",
+          "local_port": "Local UDP source port",
+          "scan_interval": "Scan interval after each poll (milliseconds, 0 = immediate)"
+        }
+      },
+      "source": {
+        "title": "Choose the variable map source",
+        "description": "Discover the published-variable map straight from the PLC (recommended), or upload an exported .pub file.",
+        "menu_options": {
+          "discover": "Discover from the PLC (recommended)",
+          "upload": "Upload a .pub file"
+        }
+      },
+      "upload": {
+        "title": "Upload a .pub file",
+        "description": "Upload an exported .pub / .piz / .zip map. The PLC is still scanned live to match the map to real devices.",
+        "data": {
+          "map_file": "Exported map file"
+        }
+      },
+      "confirm": {
+        "title": "Confirm EPSNET setup",
+        "description": "Map source: {source}\nPLC identity: {ident}\nDevices: {devices}\nPublished points: {points}\n\nCreate this integration?"
+      },
+      "reconfigure": {
+        "title": "Reconfigure EPSNET connection",
+        "description": "Change how Home Assistant reaches the PLC. The stored variable map is kept; use Configure → Re-import to refresh it.",
+        "data": {
+          "host": "PLC host",
+          "port": "PLC port",
+          "local_port": "Local UDP source port"
+        }
+      },
+      "source_plc_busy": {
+        "title": "Choose the variable map source",
+        "description": "Discover the published-variable map straight from the PLC (recommended), or upload an exported .pub file.\n\n⚠️ The PLC is busy (its exclusive session is held, e.g. by FoxTool). Close other tools and try again.",
+        "menu_options": {
+          "discover": "Discover from the PLC (recommended)",
+          "upload": "Upload a .pub file"
+        }
+      },
+      "source_cannot_connect": {
+        "title": "Choose the variable map source",
+        "description": "Discover the published-variable map straight from the PLC (recommended), or upload an exported .pub file.\n\n⚠️ Could not reach the PLC. Check the host and ports, then try again — or upload a .pub file instead.",
+        "menu_options": {
+          "discover": "Discover from the PLC (recommended)",
+          "upload": "Upload a .pub file"
+        }
+      }
+    },
+    "progress": {
+      "run_setup": "Connecting to the PLC and reading the variable map… {progress}"
+    },
+    "error": {
+      "invalid_host": "Enter the PLC host or IP address.",
+      "path_not_found": "The uploaded file could not be read.",
+      "invalid_pub": "The uploaded file could not be parsed as a .pub map.",
+      "cannot_connect": "Could not reach the PLC. Check the host and ports.",
+      "plc_busy": "The PLC is busy (its exclusive session is held, e.g. by FoxTool). Close other tools and try again."
+    },
+    "abort": {
+      "already_configured": "This EPSNET device is already configured.",
+      "reconfigure_successful": "EPSNET connection updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "EPSNET",
+        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}",
+        "menu_options": {
+          "reimport_plc": "Re-import the variable map from the PLC",
+          "settings": "Change the polling intervals"
+        }
+      },
+      "settings": {
+        "title": "Polling",
+        "data": {
+          "scan_interval": "Scan interval after each poll (milliseconds, 0 = immediate)",
+          "fast_scan_interval": "Fast lane for binary inputs — buttons, PIRs (milliseconds, 0 = off; 100 recommended)"
+        }
+      },
+      "init_plc_busy": {
+        "title": "EPSNET",
+        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ The PLC is busy (its exclusive session is held). Try again.",
+        "menu_options": {
+          "reimport_plc": "Re-import the variable map from the PLC",
+          "settings": "Change the polling intervals"
+        }
+      },
+      "init_cannot_connect": {
+        "title": "EPSNET",
+        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ Could not reach the PLC to re-import the map.",
+        "menu_options": {
+          "reimport_plc": "Re-import the variable map from the PLC",
+          "settings": "Change the polling intervals"
+        }
+      }
+    },
+    "progress": {
+      "run_setup": "Re-reading the variable map from the PLC…"
+    }
+  },
+  "issues": {
+    "map_changed": {
+      "title": "EPSNET PLC program changed",
+      "description": "The PLC's published-variable map changed since the last import (CRC {old_crc} → {new_crc}, {points} points). The new map has been applied. Review your entities and automations in case variable addresses moved."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "average_read_duration_ms": {
+        "name": "Average read duration"
+      },
+      "minimum_read_duration_ms": {
+        "name": "Minimum read duration"
+      },
+      "maximum_read_duration_ms": {
+        "name": "Maximum read duration"
+      },
+      "average_cycle_duration_ms": {
+        "name": "Average cycle duration"
+      },
+      "minimum_cycle_duration_ms": {
+        "name": "Minimum cycle duration"
+      },
+      "maximum_cycle_duration_ms": {
+        "name": "Maximum cycle duration"
+      },
+      "average_block_duration_ms": {
+        "name": "Average block read duration"
+      },
+      "minimum_block_duration_ms": {
+        "name": "Minimum block read duration"
+      },
+      "maximum_block_duration_ms": {
+        "name": "Maximum block read duration"
+      },
+      "block_count": {
+        "name": "Read block count"
+      }
+    }
+  }
+}
