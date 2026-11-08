@@ -24,7 +24,14 @@ Podporované moduly: `SA2-04M`, `SA2-012M`, `DA2-22M`, `WSB2-20`, `WSB2-40`, `IM
 
 ## Instalace
 
-### HACS
+### Marketplace (Home Assistant 2026.11 a novější)
+
+1. **Nastavení → Marketplace → Add from link** (přidat z odkazu), zadejte `ocervinka/ha-epsnet`
+   a potvrďte.
+2. Nainstalujte **EPSNET**.
+3. Restartujte Home Assistant.
+
+### HACS (Home Assistant starší než 2026.11)
 
 1. V HACS přidejte `https://github.com/ocervinka/ha-epsnet` jako vlastní repozitář (custom
    repository) s kategorií **Integration**.

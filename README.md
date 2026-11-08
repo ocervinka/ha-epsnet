@@ -35,7 +35,13 @@ The integration currently ships runtime profiles for:
 
 ## Installation
 
-### HACS
+### Marketplace (Home Assistant 2026.11 and later)
+
+1. **Settings → Marketplace → Add from link**, enter `ocervinka/ha-epsnet` and select **Add**.
+2. Install **EPSNET**.
+3. Restart Home Assistant.
+
+### HACS (Home Assistant before 2026.11)
 
 1. Add `https://github.com/ocervinka/ha-epsnet` as a custom repository in HACS with category
    **Integration**.
