@@ -24,6 +24,3 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          # The icon ships in custom_components/epsnet/brand/ rather than in the
-          # home-assistant/brands repo, which this check looks for.
-          ignore: brands

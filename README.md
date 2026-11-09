@@ -8,7 +8,9 @@ directly over EPSNET UDP — no PLCComS gateway needed.
 Not affiliated with or endorsed by Teco a.s.; Tecomat, Foxtrot and iNELS are their trademarks.
 The EPSNET support here was written for interoperability and is tested on one installation
 (a Foxtrot CP-2000 with the modules listed below, Home Assistant 2026.2 and later).
-Reports from other setups are welcome — please attach the diagnostics download to an issue.
+Reports from other setups are welcome — please attach the snapshot file
+`/config/epsnet/<entry_id>_merged_catalog.yaml` to an issue (it contains your PLC variable names;
+rename them if you prefer).
 
 ## Current capabilities
 
