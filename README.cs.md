@@ -7,7 +7,8 @@ přímo protokolem EPSNET přes UDP — bez brány PLCComS.
 
 Projekt není nijak spojen se společností Teco a.s. ani jí podporován; Tecomat, Foxtrot a iNELS
 jsou její ochranné známky. Podpora EPSNET vznikla kvůli interoperabilitě a je vyzkoušená na jedné
-instalaci (Foxtrot CP-2000 s moduly níže, Home Assistant 2026.2 a novější). Zkušenosti z jiných
+instalaci (centrální jednotka iNELS 2 CU2-01M — hardware Foxtrot první generace — s moduly níže,
+Home Assistant 2026.2 a novější). Jiné centrální jednotky Foxtrot zatím nejsou vyzkoušené. Zkušenosti z jiných
 instalací jsou vítané — otevřete integraci, zvolte **⋮ → Stáhnout diagnostiku** a soubor přiložte
 k hlášení (issue). Obsahuje názvy proměnných z vašeho programu; klidně je přepište.
 

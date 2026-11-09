@@ -7,7 +7,8 @@ directly over EPSNET UDP — no PLCComS gateway needed.
 
 Not affiliated with or endorsed by Teco a.s.; Tecomat, Foxtrot and iNELS are their trademarks.
 The EPSNET support here was written for interoperability and is tested on one installation
-(a Foxtrot CP-2000 with the modules listed below, Home Assistant 2026.2 and later).
+(an iNELS 2 CU2-01M central unit — first-generation Foxtrot hardware — with the modules listed below,
+Home Assistant 2026.2 and later). Other Foxtrot central units are untested.
 Reports from other setups are welcome: open the integration, choose **⋮ → Download diagnostics** and
 attach the file to an issue. It contains your PLC variable names; rename them if you prefer.
 
@@ -164,7 +165,7 @@ pytest -q
 
 ## Fast lane for binary inputs (buttons, PIRs)
 
-A full poll reads every state in grouped spans (≈0.6 s for ~250 states on a CP-2000 over
+A full poll reads every state in grouped spans (≈0.6 s for ~250 states on a CU2-01M over
 Wi-Fi/LAN), so with the default 500 ms scan interval each input is sampled only every ~1.1 s
 and a wall-button press shorter than that can be missed entirely. **Options → Change the
 polling intervals → Fast lane** polls just the `binary_sensor` inputs on their own interval
