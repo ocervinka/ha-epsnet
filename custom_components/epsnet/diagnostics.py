@@ -180,6 +180,13 @@ def build_catalog_snapshot(
         "unmatched_pub_devices": [
             _pub_device_snapshot(device) for device in catalog.unmatched_pub_devices
         ],
+        "unsupported_runtime_devices": [
+            _runtime_device_snapshot(runtime_device, None)
+            for runtime_device in catalog.unsupported_runtime_devices
+        ],
+        "raw_reads": {
+            label: raw_hex for label, raw_hex in catalog.runtime_inventory.raw_reads
+        },
     }
 
 
@@ -267,3 +274,37 @@ def write_catalog_snapshot(path: Path, snapshot: dict[str, object]) -> None:
     """Write the merged-catalog diagnostic artifact as YAML."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(_yaml_lines(snapshot)) + "\n", encoding="utf-8")
+
+
+async def async_get_config_entry_diagnostics(hass, entry) -> dict[str, object]:
+    """Home Assistant "Download diagnostics": the merged-catalog snapshot.
+
+    Includes the raw discovery reads so a report from an untested PLC model is
+    enough to see how its module table differs. Variable names from the PLC
+    program are included as-is (they are what the entities are built from).
+    """
+    from homeassistant.loader import async_get_integration
+
+    from .const import CONF_HOST, CONF_LOCAL_PORT, CONF_PORT, DEFAULT_LOCAL_PORT, DOMAIN
+
+    runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if runtime is None:
+        return {"error": "integration is not loaded (check the log for the setup error)"}
+    return {
+        "integration_version": str((await async_get_integration(hass, DOMAIN)).version),
+        "home_assistant": {"version": _ha_version()},
+        "entity_count": len(runtime.catalog.entities),
+        "catalog": build_catalog_snapshot(
+            runtime.catalog,
+            host=str(entry.data.get(CONF_HOST)),
+            port=int(entry.data.get(CONF_PORT, 0)),
+            local_port=int(entry.data.get(CONF_LOCAL_PORT, DEFAULT_LOCAL_PORT)),
+            map_path=None,
+        ),
+    }
+
+
+def _ha_version() -> str:
+    from homeassistant.const import __version__
+
+    return __version__

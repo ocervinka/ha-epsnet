@@ -8,9 +8,11 @@ directly over EPSNET UDP — no PLCComS gateway needed.
 Not affiliated with or endorsed by Teco a.s.; Tecomat, Foxtrot and iNELS are their trademarks.
 The EPSNET support here was written for interoperability and is tested on one installation
 (a Foxtrot CP-2000 with the modules listed below, Home Assistant 2026.2 and later).
-Reports from other setups are welcome — please attach the snapshot file
-`/config/epsnet/<entry_id>_merged_catalog.yaml` to an issue (it contains your PLC variable names;
-rename them if you prefer).
+Reports from other setups are welcome: open the integration, choose **⋮ → Download diagnostics** and
+attach the file to an issue. It contains your PLC variable names; rename them if you prefer.
+
+Modules the integration doesn't know yet are not created as devices; they are listed in a
+**Repairs** notice instead (with their type codes), so you know what is missing.
 
 ## Current capabilities
 
@@ -87,8 +89,10 @@ language, copy `en.json` to `<language code>.json` and translate the values.
 
 ## Diagnostics and performance
 
-After a successful startup, the integration writes a merged-catalog YAML snapshot under the Home
-Assistant config directory in `epsnet/`.
+**Download diagnostics** (on the integration's ⋮ menu) returns the merged catalog: discovered
+modules and their type codes, how they matched the published variables, unsupported modules, and the
+raw discovery reads. The same catalog (without the raw reads) is also written at startup to
+`epsnet/<entry_id>_merged_catalog.yaml` in the Home Assistant config directory.
 
 The integration also exposes diagnostic timing sensors for:
 

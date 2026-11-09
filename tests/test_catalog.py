@@ -496,3 +496,27 @@ def test_build_catalog_supports_runtime_only_mode_without_pub_entries() -> None:
     # Unmatched runtime devices are preserved for diagnostics
     assert len(catalog.unmatched_runtime_devices) == 3
     assert [d.model for d in catalog.unmatched_runtime_devices] == ["WSB2-40", "DA2-22M", "IM2-140M"]
+
+
+def test_unknown_module_codes_get_no_device_and_are_reported() -> None:
+    from custom_components.epsnet.catalog import unsupported_module_summary
+
+    # A known WSB2-40 between unknown codes (as seen on an untested PLC model).
+    runtime_inventory = _make_runtime_inventory([0x0D31, 0x0C36, 0x0D31, 0x0C38])
+
+    catalog = build_catalog((), runtime_inventory)
+
+    assert list(catalog.devices_by_key) == ["runtime_40015382_01"]
+    assert all(e.device_key == "runtime_40015382_01" for e in catalog.entities)
+    assert [d.runtime_type_code for d in catalog.runtime_inventory.devices] == [0x0C36]
+    assert [d.slot_index for d in catalog.unsupported_runtime_devices] == [0, 2, 3]
+    assert unsupported_module_summary(catalog) == (3, "0x0c38, 0x0d31 ×2")
+    # The groups keep the full discovery for the diagnostics download.
+    assert len(catalog.runtime_inventory.groups[0].devices) == 4
+
+
+def test_known_modules_report_nothing_unsupported() -> None:
+    from custom_components.epsnet.catalog import unsupported_module_summary
+
+    catalog = build_catalog((), _make_runtime_inventory([0x0C36, 0x0C1D]))
+    assert unsupported_module_summary(catalog) == (0, "")

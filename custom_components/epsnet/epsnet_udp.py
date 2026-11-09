@@ -1239,9 +1239,9 @@ class EpsnetUdpClient:
                 sock,
                 _build_discovery_inner(_DISCOVERY_ROOT_SERVICE, b"\x00"),
             )
-            root_identity, root_records = _parse_root_body(
-                _parse_read_like_body(root_response, context="root discovery")
-            )
+            root_body = _parse_read_like_body(root_response, context="root discovery")
+            raw_reads: list[tuple[str, str]] = [("root", root_body.hex())]
+            root_identity, root_records = _parse_root_body(root_body)
             root_tokens = tuple(record.token for record in root_records)
             
             tmodule1_bank = root_tokens[0]
@@ -1249,6 +1249,7 @@ class EpsnetUdpClient:
                 sock, token=tmodule1_bank + 0x200, length=240
             )
             LOGGER.debug("TmodulE1 raw (%d bytes): %s", len(tmodule1_data), tmodule1_data.hex())
+            raw_reads.append(("tmodule1", tmodule1_data.hex()))
             tmodule1_all_records = _parse_tmodule1(tmodule1_data)
             LOGGER.debug("TmodulE1 all records: %s", tmodule1_all_records)
 
@@ -1266,9 +1267,11 @@ class EpsnetUdpClient:
                 sock,
                 _build_discovery_parameter_read(0x7A, group_table_token),
             )
-            group_records = _parse_group_table(
-                _parse_read_like_body(group_table_response, context="group table discovery")
+            group_table_body = _parse_read_like_body(
+                group_table_response, context="group table discovery"
             )
+            raw_reads.append(("group_table", group_table_body.hex()))
+            group_records = _parse_group_table(group_table_body)
             LOGGER.debug(
                 "Group table: %d entries: %s",
                 len(group_records),
@@ -1319,19 +1322,23 @@ class EpsnetUdpClient:
                     ),
                 )
 
+                chunk1 = _parse_read_like_body(
+                    first_chunk_response,
+                    context=f"group tail {group_token:#010x} first chunk",
+                )
+                chunk2 = _parse_read_like_body(
+                    second_chunk_response,
+                    context=f"group tail {group_token:#010x} second chunk",
+                )
+                raw_reads.append((f"group_{group_token:08x}_chunk1", chunk1.hex()))
+                raw_reads.append((f"group_{group_token:08x}_chunk2", chunk2.hex()))
                 header_hex, slot_map, group_devices = _parse_group_devices(
                     group_token=group_token,
                     label=label,
                     marker=marker,
                     kind=kind,
-                    chunk1=_parse_read_like_body(
-                        first_chunk_response,
-                        context=f"group tail {group_token:#010x} first chunk",
-                    ),
-                    chunk2=_parse_read_like_body(
-                        second_chunk_response,
-                        context=f"group tail {group_token:#010x} second chunk",
-                    ),
+                    chunk1=chunk1,
+                    chunk2=chunk2,
                 )
                 enriched_devices = tuple(
                     self._enrich_runtime_device_on_socket(sock, device)
@@ -1366,6 +1373,7 @@ class EpsnetUdpClient:
             root_records=root_records,
             cpu_off_in=cpu_off_in,
             cpu_off_out=cpu_off_out,
+            raw_reads=tuple(raw_reads),
         )
 
     def _read_point_values_blocking_on_socket(

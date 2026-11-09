@@ -31,6 +31,10 @@
         "title": "Potvrdenie nastavenia EPSNET",
         "description": "Zdroj mapy: {source}\nIdentifikácia PLC: {ident}\nModuly: {devices}\nPublikované body: {points}\n\nVytvoriť integráciu?"
       },
+      "confirm_unsupported": {
+        "title": "Potvrdenie nastavenia EPSNET",
+        "description": "Zdroj mapy: {source}\nIdentifikácia PLC: {ident}\nModuly: {devices}\nPublikované body: {points}\n\n⚠️ {unsupported_count} modul(ov) na zbernici PLC zatiaľ nie je podporovaných ({unsupported_codes}). Nebudú mať žiadne entity. Pomôžte ich prosím doplniť: po dokončení otvorte integráciu, zvoľte ⋮ → Stiahnuť diagnostiku a súbor priložte k hláseniu na {issue_url}.\n\nVytvoriť integráciu?"
+      },
       "reconfigure": {
         "title": "Zmena pripojenia EPSNET",
         "description": "Zmeňte, ako sa Home Assistant pripája k PLC. Uložená mapa premenných zostane; na jej obnovenie použite Konfigurovať → Znovu načítať.",
@@ -114,20 +118,44 @@
     "map_changed": {
       "title": "Program PLC EPSNET sa zmenil",
       "description": "Mapa publikovaných premenných v PLC sa od posledného načítania zmenila (CRC {old_crc} → {new_crc}, {points} bodov). Nová mapa bola použitá. Skontrolujte entity a automatizácie, či sa adresy premenných neposunuli."
+    },
+    "unsupported_modules": {
+      "title": "EPSNET: moduly PLC zatiaľ nie sú podporované",
+      "description": "{count} modul(ov) na zbernici PLC zatiaľ nie je podporovaných ({codes}), preto nemajú žiadne entity. Ak ich chcete pomôcť doplniť, otvorte integráciu EPSNET, zvoľte ⋮ → Stiahnuť diagnostiku a súbor priložte k hláseniu na {issue_url}. Súbor obsahuje názvy premenných z vášho programu; pokojne ich v ňom prepíšte."
     }
   },
   "entity": {
     "sensor": {
-      "average_read_duration_ms": { "name": "Priemerná doba čítania" },
-      "minimum_read_duration_ms": { "name": "Najkratšia doba čítania" },
-      "maximum_read_duration_ms": { "name": "Najdlhšia doba čítania" },
-      "average_cycle_duration_ms": { "name": "Priemerná doba cyklu" },
-      "minimum_cycle_duration_ms": { "name": "Najkratšia doba cyklu" },
-      "maximum_cycle_duration_ms": { "name": "Najdlhšia doba cyklu" },
-      "average_block_duration_ms": { "name": "Priemerná doba čítania bloku" },
-      "minimum_block_duration_ms": { "name": "Najkratšia doba čítania bloku" },
-      "maximum_block_duration_ms": { "name": "Najdlhšia doba čítania bloku" },
-      "block_count": { "name": "Počet čítaných blokov" }
+      "average_read_duration_ms": {
+        "name": "Priemerná doba čítania"
+      },
+      "minimum_read_duration_ms": {
+        "name": "Najkratšia doba čítania"
+      },
+      "maximum_read_duration_ms": {
+        "name": "Najdlhšia doba čítania"
+      },
+      "average_cycle_duration_ms": {
+        "name": "Priemerná doba cyklu"
+      },
+      "minimum_cycle_duration_ms": {
+        "name": "Najkratšia doba cyklu"
+      },
+      "maximum_cycle_duration_ms": {
+        "name": "Najdlhšia doba cyklu"
+      },
+      "average_block_duration_ms": {
+        "name": "Priemerná doba čítania bloku"
+      },
+      "minimum_block_duration_ms": {
+        "name": "Najkratšia doba čítania bloku"
+      },
+      "maximum_block_duration_ms": {
+        "name": "Najdlhšia doba čítania bloku"
+      },
+      "block_count": {
+        "name": "Počet čítaných blokov"
+      }
     }
   }
 }

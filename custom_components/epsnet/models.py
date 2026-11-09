@@ -406,6 +406,9 @@ class RuntimeInventory:
     root_records: tuple[RuntimeDiscoveryRecord, ...] = ()
     cpu_off_in: int = 0
     cpu_off_out: int = 0
+    # (label, hex) of the raw discovery reads, kept for the diagnostics download
+    # so layouts from other PLC models can be analysed from a user report.
+    raw_reads: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -476,6 +479,9 @@ class EntityCatalog:
     runtime_inventory: RuntimeInventory
     unmatched_runtime_devices: tuple[RuntimeDiscoveredDevice, ...] = ()
     unmatched_pub_devices: tuple[DetectedDevice, ...] = ()
+    # Modules found on the bus whose type code has no definition yet. They get
+    # no device and no entities; they are reported to the user instead.
+    unsupported_runtime_devices: tuple[RuntimeDiscoveredDevice, ...] = ()
 
     def entities_for_platform(self, platform: str) -> tuple[EntitySpec, ...]:
         """Return all entity specs for one Home Assistant platform."""

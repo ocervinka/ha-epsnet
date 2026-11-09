@@ -31,6 +31,10 @@
         "title": "Potvrzení nastavení EPSNET",
         "description": "Zdroj mapy: {source}\nIdentifikace PLC: {ident}\nModuly: {devices}\nPublikované body: {points}\n\nVytvořit integraci?"
       },
+      "confirm_unsupported": {
+        "title": "Potvrzení nastavení EPSNET",
+        "description": "Zdroj mapy: {source}\nIdentifikace PLC: {ident}\nModuly: {devices}\nPublikované body: {points}\n\n⚠️ {unsupported_count} modul(ů) na sběrnici PLC zatím není podporováno ({unsupported_codes}). Nebudou mít žádné entity. Pomozte je prosím doplnit: po dokončení otevřete integraci, zvolte ⋮ → Stáhnout diagnostiku a soubor přiložte k hlášení na {issue_url}.\n\nVytvořit integraci?"
+      },
       "reconfigure": {
         "title": "Změna připojení EPSNET",
         "description": "Změňte, jak se Home Assistant připojuje k PLC. Uložená mapa proměnných zůstane; pro obnovení použijte Nastavit → Znovu načíst.",
@@ -114,20 +118,44 @@
     "map_changed": {
       "title": "Program PLC EPSNET se změnil",
       "description": "Mapa publikovaných proměnných v PLC se od posledního načtení změnila (CRC {old_crc} → {new_crc}, {points} bodů). Nová mapa byla použita. Zkontrolujte entity a automatizace, zda se adresy proměnných neposunuly."
+    },
+    "unsupported_modules": {
+      "title": "EPSNET: moduly PLC zatím nejsou podporované",
+      "description": "{count} modul(ů) na sběrnici PLC zatím není podporováno ({codes}), proto nemají žádné entity. Pokud je chcete pomoci doplnit, otevřete integraci EPSNET, zvolte ⋮ → Stáhnout diagnostiku a soubor přiložte k hlášení na {issue_url}. Soubor obsahuje názvy proměnných z vašeho programu; klidně je v něm přepište."
     }
   },
   "entity": {
     "sensor": {
-      "average_read_duration_ms": { "name": "Průměrná doba čtení" },
-      "minimum_read_duration_ms": { "name": "Nejkratší doba čtení" },
-      "maximum_read_duration_ms": { "name": "Nejdelší doba čtení" },
-      "average_cycle_duration_ms": { "name": "Průměrná doba cyklu" },
-      "minimum_cycle_duration_ms": { "name": "Nejkratší doba cyklu" },
-      "maximum_cycle_duration_ms": { "name": "Nejdelší doba cyklu" },
-      "average_block_duration_ms": { "name": "Průměrná doba čtení bloku" },
-      "minimum_block_duration_ms": { "name": "Nejkratší doba čtení bloku" },
-      "maximum_block_duration_ms": { "name": "Nejdelší doba čtení bloku" },
-      "block_count": { "name": "Počet čtených bloků" }
+      "average_read_duration_ms": {
+        "name": "Průměrná doba čtení"
+      },
+      "minimum_read_duration_ms": {
+        "name": "Nejkratší doba čtení"
+      },
+      "maximum_read_duration_ms": {
+        "name": "Nejdelší doba čtení"
+      },
+      "average_cycle_duration_ms": {
+        "name": "Průměrná doba cyklu"
+      },
+      "minimum_cycle_duration_ms": {
+        "name": "Nejkratší doba cyklu"
+      },
+      "maximum_cycle_duration_ms": {
+        "name": "Nejdelší doba cyklu"
+      },
+      "average_block_duration_ms": {
+        "name": "Průměrná doba čtení bloku"
+      },
+      "minimum_block_duration_ms": {
+        "name": "Nejkratší doba čtení bloku"
+      },
+      "maximum_block_duration_ms": {
+        "name": "Nejdelší doba čtení bloku"
+      },
+      "block_count": {
+        "name": "Počet čtených bloků"
+      }
     }
   }
 }

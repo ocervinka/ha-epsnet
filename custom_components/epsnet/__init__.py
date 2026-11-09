@@ -7,9 +7,10 @@ from dataclasses import dataclass
 import logging
 from pathlib import Path
 
-from .catalog import EntityCatalog, build_catalog
+from .catalog import EntityCatalog, build_catalog, unsupported_module_summary
 from .client import EpsnetClient
 from .const import (
+    ISSUE_TRACKER_URL,
     CONF_HOST,
     CONF_LOCAL_PORT,
     CONF_MAP,
@@ -99,6 +100,42 @@ async def _async_register_runtime_devices(hass, *, entry_id: str, catalog: Entit
             model=runtime_device.model,
             name=_runtime_device_name(runtime_device, matched_device),
         )
+
+
+def _async_update_unsupported_issue(hass, entry, catalog: EntityCatalog) -> None:
+    """Raise (or clear) a Repairs notice listing modules with no definition yet.
+
+    Unknown modules get no device and no entities, so without this notice a
+    user on an untested PLC would just see an empty integration.
+    """
+    from homeassistant.helpers import issue_registry as ir
+
+    issue_id = f"unsupported_modules_{entry.entry_id}"
+    count, codes = unsupported_module_summary(catalog)
+    if not count:
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
+        return
+    LOGGER.warning(
+        "%d module(s) on the PLC bus are not supported yet (%s); they get no "
+        "entities. Please report them at %s with the diagnostics download",
+        count,
+        codes,
+        ISSUE_TRACKER_URL,
+    )
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        learn_more_url=ISSUE_TRACKER_URL,
+        translation_key="unsupported_modules",
+        translation_placeholders={
+            "count": str(count),
+            "codes": codes,
+            "issue_url": ISSUE_TRACKER_URL,
+        },
+    )
 
 
 def _resolve_entry_map(entry) -> tuple[tuple[PubEntry, ...], str, str | None]:
@@ -193,6 +230,7 @@ async def async_setup_entry(hass, entry) -> bool:
         inventory = await client.discover_runtime_inventory()
 
         catalog = build_catalog(entries, inventory)
+        _async_update_unsupported_issue(hass, entry, catalog)
         if entries and not catalog.devices_by_key:
             LOGGER.warning(
                 "Configured `.pub` file %s did not match any live discovered devices; "

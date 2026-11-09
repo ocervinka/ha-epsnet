@@ -313,6 +313,7 @@ def _load_init_module(monkeypatch: pytest.MonkeyPatch):
     catalog = types.ModuleType(f"{package_name}.catalog")
     catalog.EntityCatalog = object
     catalog.build_catalog = lambda *args, **kwargs: None
+    catalog.unsupported_module_summary = lambda *args, **kwargs: (0, "")
     monkeypatch.setitem(sys.modules, f"{package_name}.catalog", catalog)
 
     client = types.ModuleType(f"{package_name}.client")

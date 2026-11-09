@@ -19,6 +19,7 @@ from homeassistant.data_entry_flow import FlowResult, FlowResultType
 import voluptuous as vol
 
 from .const import (
+    ISSUE_TRACKER_URL,
     CONF_HOST,
     CONF_LOCAL_PORT,
     CONF_MAP,
@@ -320,16 +321,35 @@ class EpsnetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data = {**self._data, CONF_MAP: freeze_setup(result)}
             return self.async_create_entry(title=self._data[CONF_NAME], data=data)
 
-        return self.async_show_form(
-            step_id="confirm",
-            data_schema=vol.Schema({}),
-            description_placeholders={
-                "source": result.source,
-                "ident": result.plc_ident or "—",
-                "devices": str(len(result.catalog.devices_by_key)),
-                "points": str(result.address_count),
-            },
+        from .catalog import unsupported_module_summary
+
+        unsupported_count, unsupported_codes = unsupported_module_summary(
+            result.catalog
         )
+        placeholders = {
+            "source": result.source,
+            "ident": result.plc_ident or "—",
+            "devices": str(len(result.catalog.devices_by_key)),
+            "points": str(result.address_count),
+        }
+        if unsupported_count:
+            placeholders |= {
+                "unsupported_count": str(unsupported_count),
+                "unsupported_codes": unsupported_codes,
+                "issue_url": ISSUE_TRACKER_URL,
+            }
+        return self.async_show_form(
+            # A variant step id carries the translated "unsupported modules"
+            # notice; HA re-enters the handler named by the shown step id.
+            step_id="confirm_unsupported" if unsupported_count else "confirm",
+            data_schema=vol.Schema({}),
+            description_placeholders=placeholders,
+        )
+
+    async def async_step_confirm_unsupported(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        return await self.async_step_confirm(user_input)
 
     async def _async_close_client(self) -> None:
         if self._client is not None:

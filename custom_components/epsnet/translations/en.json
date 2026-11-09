@@ -31,6 +31,10 @@
         "title": "Confirm EPSNET setup",
         "description": "Map source: {source}\nPLC identity: {ident}\nDevices: {devices}\nPublished points: {points}\n\nCreate this integration?"
       },
+      "confirm_unsupported": {
+        "title": "Confirm EPSNET setup",
+        "description": "Map source: {source}\nPLC identity: {ident}\nDevices: {devices}\nPublished points: {points}\n\n⚠️ {unsupported_count} module(s) on the PLC bus are not supported yet ({unsupported_codes}). They will get no entities. Please help add them: after setup, open the integration, choose ⋮ → Download diagnostics and attach the file to an issue at {issue_url}.\n\nCreate this integration?"
+      },
       "reconfigure": {
         "title": "Reconfigure EPSNET connection",
         "description": "Change how Home Assistant reaches the PLC. The stored variable map is kept; use Configure → Re-import to refresh it.",
@@ -114,6 +118,10 @@
     "map_changed": {
       "title": "EPSNET PLC program changed",
       "description": "The PLC's published-variable map changed since the last import (CRC {old_crc} → {new_crc}, {points} points). The new map has been applied. Review your entities and automations in case variable addresses moved."
+    },
+    "unsupported_modules": {
+      "title": "EPSNET: PLC modules not supported yet",
+      "description": "{count} module(s) on the PLC bus are not supported yet ({codes}), so they have no entities. To help add them, open the EPSNET integration, choose ⋮ → Download diagnostics and attach the file to an issue at {issue_url}. The file contains your PLC variable names; rename them in the file if you prefer."
     }
   },
   "entity": {

@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from functools import lru_cache
 import re
 
+from .runtime_registry import RUNTIME_MODEL_INFOS_BY_CODE
 from .models import (
     AddressRange,
     DetectedDevice,
@@ -1000,6 +1001,24 @@ def build_catalog(
     device, then matched against a runtime device by profile shape.
     """
     entries_by_name = {entry.name: entry for entry in entries}
+    # Modules with an unknown type code have no channel layout, so they can
+    # neither be matched nor produce entities. Keep them out of the inventory
+    # the rest of the catalog sees (no empty "Unknown" devices in HA) and
+    # report them separately. The groups keep the full discovery for diagnostics.
+    unsupported_runtime_devices = tuple(
+        device
+        for device in runtime_inventory.devices
+        if device.runtime_type_code not in RUNTIME_MODEL_INFOS_BY_CODE
+    )
+    if unsupported_runtime_devices:
+        runtime_inventory = replace(
+            runtime_inventory,
+            devices=tuple(
+                device
+                for device in runtime_inventory.devices
+                if device.runtime_type_code in RUNTIME_MODEL_INFOS_BY_CODE
+            ),
+        )
     devices_by_key, entry_to_device_key, entry_to_channel_name = _detect_devices(
         entries_by_name
     )
@@ -1073,4 +1092,17 @@ def build_catalog(
         runtime_inventory=runtime_inventory,
         unmatched_runtime_devices=unmatched_runtime_devices,
         unmatched_pub_devices=unmatched_pub_devices,
+        unsupported_runtime_devices=unsupported_runtime_devices,
     )
+
+
+def unsupported_module_summary(catalog: EntityCatalog) -> tuple[int, str]:
+    """Return (count, "0x0d31 ×11, 0x0c38") for modules with no definition yet."""
+    counts = Counter(
+        device.runtime_type_code for device in catalog.unsupported_runtime_devices
+    )
+    codes = ", ".join(
+        f"0x{code:04x}" + (f" ×{count}" if count > 1 else "")
+        for code, count in sorted(counts.items())
+    )
+    return sum(counts.values()), codes

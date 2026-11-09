@@ -187,3 +187,75 @@ async def test_czech_install_gets_czech_sensor_names(hass: HomeAssistant) -> Non
             s.attributes.get("friendly_name") for s in hass.states.async_all("sensor")
         }
         assert any(n and n.endswith("Průměrná doba čtení") for n in names), names
+
+
+async def test_unsupported_modules_are_reported_not_created(
+    hass: HomeAssistant,
+) -> None:
+    """An untested PLC: unknown module codes -> notice in the flow + Repairs,
+    no empty devices, and the diagnostics download carries the raw reads."""
+    import dataclasses
+
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import issue_registry as ir
+
+    from custom_components.epsnet.diagnostics import async_get_config_entry_diagnostics
+    from custom_components.epsnet.runtime_registry import lookup_runtime_model_info
+
+    base = SYNTH_INVENTORY.devices[0]
+    unknown = dataclasses.replace(
+        base,
+        key="unknown",
+        runtime_index=30,
+        slot_index=30,
+        runtime_type_code=0x0D31,
+        model_info=lookup_runtime_model_info(0x0D31),
+    )
+    inventory = dataclasses.replace(
+        SYNTH_INVENTORY,
+        devices=SYNTH_INVENTORY.devices + (unknown,),
+        raw_reads=(("root", "00ff"),),
+    )
+
+    with _patch_client(AsyncMock()), patch(
+        f"{_CLIENT}.discover_runtime_inventory", AsyncMock(return_value=inventory)
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": "user"}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"name": "EPSNET", "host": "127.0.0.1", "port": 61682,
+             "local_port": 61681, "scan_interval": 500},
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"next_step_id": "discover"}
+        )
+        await hass.async_block_till_done()
+        result = await hass.config_entries.flow.async_configure(result["flow_id"])
+        assert result["step_id"] == "confirm_unsupported"
+        assert result["description_placeholders"]["unsupported_codes"] == "0x0d31"
+        assert result["description_placeholders"]["unsupported_count"] == "1"
+
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+        entry = result["result"]
+        assert entry.state is ConfigEntryState.LOADED
+
+        models = {
+            d.model for d in dr.async_get(hass).devices.values()
+            if entry.entry_id in d.config_entries
+        }
+        assert models and not any(m.startswith("Unknown") for m in models)
+
+        issue = ir.async_get(hass).async_get_issue(
+            DOMAIN, f"unsupported_modules_{entry.entry_id}"
+        )
+        assert issue is not None
+        assert issue.translation_placeholders["codes"] == "0x0d31"
+
+        diag = await async_get_config_entry_diagnostics(hass, entry)
+        catalog = diag["catalog"]
+        assert catalog["raw_reads"] == {"root": "00ff"}
+        assert [d["runtime_type_code"] for d in catalog["unsupported_runtime_devices"]] == ["0x0d31"]

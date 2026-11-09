@@ -30,3 +30,5 @@ DIAGNOSTIC_DIRECTORY = "epsnet"
 MERGED_CATALOG_BASENAME = "merged_catalog"
 
 SUPPORTED_PLATFORMS = ("binary_sensor", "light", "sensor", "switch")
+
+ISSUE_TRACKER_URL = "https://github.com/ocervinka/ha-epsnet/issues"
