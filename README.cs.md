@@ -60,9 +60,11 @@ Zkopírujte složku `custom_components/epsnet` do konfigurační složky Home As
 3. **Potvrzení** — ukáže identifikaci PLC, počet nalezených modulů a publikovaných bodů.
 
 Mapa se uloží do konfigurace integrace a sama se znovu nenačítá: po změně programu v PLC zvolte
-**Nastavit → Znovu načíst mapu proměnných z PLC** (pokud se mapa opravdu změnila, ukáže se
-upozornění v Opravách). Tamtéž lze změnit intervaly čtení včetně rychlého čtení vstupů (doporučeno
-100 ms).
+**Nastavit → Znovu načíst mapu proměnných z PLC**, nebo **… ze souboru (.pub)**, když PLC žádnou
+mapu neobsahuje nebo jen starou (program nahraný z Mosaicu). Integrace i ID entit zůstanou; pokud se
+mapa opravdu změnila, ukáže se upozornění v Opravách, a soubor, který nesedí na žádný modul PLC,
+se odmítne. Tamtéž lze změnit intervaly čtení: prodlevu mezi úplnými čteními (výchozí 500 ms)
+a rychlé čtení tlačítek a čidel (doporučeno 100 ms).
 
 ### Mapa proměnných je nutná
 

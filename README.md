@@ -72,8 +72,10 @@ Copy `custom_components/epsnet` into your Home Assistant config directory under
 
 Either way the PLC's module inventory is also scanned live, so entities are created only for
 hardware that is actually there. The map is stored in the config entry and is not re-read on its
-own: after changing the PLC program, use **Configure → Re-import the variable map from the PLC**
-(a repair notice tells you when the map actually changed).
+own: after changing the PLC program, use **Configure → Re-import the variable map from the PLC**,
+or **… from a file (.pub)** when the PLC holds no map or an old one (a program loaded with
+Mosaic). Either way the entry and its entity IDs stay; a repair notice tells you when the map
+actually changed, and a file that pairs with none of the PLC's modules is refused.
 
 ### The variable map is required
 
@@ -92,8 +94,9 @@ Discovery and the map fetch use a temporary UDP port, so FoxTool, Mosaic and the
 can connect to the PLC while Home Assistant is running (the PLC's single management session is taken only
 during the few minutes of a map fetch).
 
-**Configure** on the integration later offers *Re-import the variable map from the PLC* and the
-polling intervals, including the fast lane below. *Reconfigure* changes host and ports.
+**Configure** on the integration later offers *Re-import the variable map from the PLC*,
+*Re-import the variable map from a file (.pub)* and the polling intervals: the pause between full
+reads of all values (default 500 ms) and the fast lane below. *Reconfigure* changes host and ports.
 
 ## Languages
 

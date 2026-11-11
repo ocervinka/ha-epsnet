@@ -374,7 +374,8 @@ class EpsnetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class EpsnetOptionsFlow(config_entries.OptionsFlow):
-    """Any-time settings: re-import the map, change the scan interval, see status.
+    """Any-time settings: re-import the map (from the PLC or a file), change the
+    polling intervals, see status.
 
     ``self.config_entry`` is provided by Home Assistant; do not store it.
     """
@@ -385,6 +386,7 @@ class EpsnetOptionsFlow(config_entries.OptionsFlow):
         self._error: str | None = None
         self._reimport_client: EpsnetUdpClient | None = None
         self._reimport_owns_client = False
+        self._reimport_entries: tuple[PubEntry, ...] | None = None
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -395,7 +397,7 @@ class EpsnetOptionsFlow(config_entries.OptionsFlow):
         self._error = None
         return self.async_show_menu(
             step_id=step_id,
-            menu_options=["reimport_plc", "settings"],
+            menu_options=["reimport_plc", "reimport_file", "settings"],
             description_placeholders={
                 "source": str(blob.get("source", "—")),
                 "ident": blob.get("plc_ident") or "—",
@@ -453,11 +455,75 @@ class EpsnetOptionsFlow(config_entries.OptionsFlow):
         )
         return self.async_show_form(step_id="settings", data_schema=schema)
 
-    # -- Re-import the map from the PLC (progress) ---------------------------
+    # -- Re-import the map from the PLC -------------------------------------
 
     async def async_step_reimport_plc(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
+        self._reimport_entries = None
+        return await self._async_reimport_progress("reimport_plc")
+
+    # -- Re-import the map from an uploaded file -----------------------------
+
+    async def async_step_reimport_file(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Upload a .pub for an existing entry (the PLC holds none, or an old one)."""
+        from homeassistant.components.file_upload import process_uploaded_file
+        from homeassistant.helpers.selector import (
+            FileSelector,
+            FileSelectorConfig,
+        )
+
+        errors: dict[str, str] = {}
+        if self._error == "pub_no_match":
+            errors[CONF_MAP_FILE] = self._error
+            self._error = None
+        if user_input is not None:
+            file_id = user_input[CONF_MAP_FILE]
+
+            def _read() -> tuple[PubEntry, ...]:
+                with process_uploaded_file(self.hass, file_id) as path:
+                    return load_pub_entries(path)
+
+            try:
+                entries = await self.hass.async_add_executor_job(_read)
+            except FileNotFoundError:
+                errors[CONF_MAP_FILE] = "path_not_found"
+            except PubFileParseError:
+                errors[CONF_MAP_FILE] = "invalid_pub"
+            else:
+                if not entries:
+                    errors[CONF_MAP_FILE] = "invalid_pub"
+                else:
+                    self._reimport_entries = entries
+                    return await self.async_step_reimport_file_run()
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_MAP_FILE): FileSelector(
+                    FileSelectorConfig(accept=_PUB_UPLOAD_ACCEPT)
+                )
+            }
+        )
+        return self.async_show_form(
+            step_id="reimport_file", data_schema=schema, errors=errors
+        )
+
+    async def async_step_reimport_file_run(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        return await self._async_reimport_progress("reimport_file_run")
+
+    # -- Shared re-import progress -------------------------------------------
+
+    async def _async_reimport_progress(self, step_id: str) -> FlowResult:
+        """Scan the PLC and build the catalog under a spinner, then apply it.
+
+        With ``_reimport_entries`` set (uploaded file) only the module scan talks
+        to the PLC; otherwise the map is fetched from the PLC too.
+        """
+        from_file = self._reimport_entries is not None
         if self._setup_task is None:
             self._reimport_client, self._reimport_owns_client = (
                 self._resolve_reimport_client()
@@ -474,8 +540,8 @@ class EpsnetOptionsFlow(config_entries.OptionsFlow):
 
         if not self._setup_task.done():
             return self.async_show_progress(
-                step_id="reimport_plc",
-                progress_action="run_setup",
+                step_id=step_id,
+                progress_action="run_file_setup" if from_file else "run_setup",
                 description_placeholders=_fetch_progress_placeholders(
                     self._reimport_client
                 ),
@@ -496,6 +562,11 @@ class EpsnetOptionsFlow(config_entries.OptionsFlow):
             # Never replace a working map with an empty one.
             self._error = "no_map"
             return self.async_show_progress_done(next_step_id="init")
+        if from_file and not self._result.catalog.entities:
+            # Nothing in the file pairs with a module this PLC has: almost
+            # certainly the wrong project. Keep the working map and ask again.
+            self._error = "pub_no_match"
+            return self.async_show_progress_done(next_step_id="reimport_file")
         return self.async_show_progress_done(next_step_id="reimport_done")
 
     def _resolve_reimport_client(self) -> tuple[EpsnetUdpClient, bool]:
@@ -518,6 +589,12 @@ class EpsnetOptionsFlow(config_entries.OptionsFlow):
 
     async def _async_reimport(self) -> SetupResult:
         try:
+            if self._reimport_entries is not None:
+                return await run_setup(
+                    self._reimport_client,
+                    preset_entries=self._reimport_entries,
+                    preset_source="file",
+                )
             return await run_setup(self._reimport_client)
         finally:
             if self._reimport_owns_client and self._reimport_client is not None:

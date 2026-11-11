@@ -10,6 +10,9 @@
           "port": "PLC port",
           "local_port": "Local UDP source port",
           "scan_interval": "Scan interval after each poll (milliseconds, 0 = immediate)"
+        },
+        "data_description": {
+          "scan_interval": "Pause after each full read of the PLC's values. Default 500; 0 starts the next read immediately. The fast lane for buttons is under Configure once set up."
         }
       },
       "source": {
@@ -88,46 +91,68 @@
     "step": {
       "init": {
         "title": "EPSNET",
-        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}",
+        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n**Re-import the variable map** after changing the PLC program, so Home Assistant reads and switches the right variables. Entities keep their IDs.\n- **From the PLC** reads the map stored in the PLC together with the program.\n- **From a file** uploads the `.pub` exported with the program. Use it when the PLC stores no map, or an old one.\n\n**Polling intervals** set how often values are read from the PLC.",
         "menu_options": {
           "reimport_plc": "Re-import the variable map from the PLC",
+          "reimport_file": "Re-import the variable map from a file (.pub)",
           "settings": "Change the polling intervals"
         }
       },
       "settings": {
-        "title": "Polling",
+        "title": "Polling intervals",
+        "description": "How often Home Assistant reads values from the PLC. Shorter intervals give faster updates but more network traffic and load on the PLC. Saving reloads the integration.",
         "data": {
-          "scan_interval": "Scan interval after each poll (milliseconds, 0 = immediate)",
-          "fast_scan_interval": "Fast lane for binary inputs — buttons, PIRs (milliseconds, 0 = off; 100 recommended)"
+          "scan_interval": "Pause between full reads (milliseconds)",
+          "fast_scan_interval": "Fast lane for buttons and motion sensors (milliseconds)"
+        },
+        "data_description": {
+          "scan_interval": "Each cycle reads every value the integration uses (a few hundred values take about half a second), then waits this long before the next one. Default 500; 0 starts the next read immediately.",
+          "fast_scan_interval": "Reads only the on/off inputs (wall buttons, motion sensors, contacts) on their own short cycle, so a quick button press isn't missed between full reads. 0 = off; 100 is recommended (about 10 small requests per second)."
+        }
+      },
+      "reimport_file": {
+        "title": "Re-import from a file",
+        "description": "Upload the `.pub` / `.piz` / `.zip` exported with the program that is running in the PLC now. The PLC's modules are still scanned live to match the map to them. If the file can't be used, the current map is kept.",
+        "data": {
+          "map_file": "Exported map file"
         }
       },
       "init_plc_busy": {
         "title": "EPSNET",
-        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ The PLC is busy (its exclusive session is held). Try again.",
+        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ The PLC is busy (its exclusive session is held). Try again.\n\n**Re-import the variable map** after changing the PLC program, so Home Assistant reads and switches the right variables. Entities keep their IDs.\n- **From the PLC** reads the map stored in the PLC together with the program.\n- **From a file** uploads the `.pub` exported with the program. Use it when the PLC stores no map, or an old one.\n\n**Polling intervals** set how often values are read from the PLC.",
         "menu_options": {
           "reimport_plc": "Re-import the variable map from the PLC",
+          "reimport_file": "Re-import the variable map from a file (.pub)",
           "settings": "Change the polling intervals"
         }
       },
       "init_cannot_connect": {
         "title": "EPSNET",
-        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ Could not reach the PLC to re-import the map.",
+        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ Could not reach the PLC to re-import the map.\n\n**Re-import the variable map** after changing the PLC program, so Home Assistant reads and switches the right variables. Entities keep their IDs.\n- **From the PLC** reads the map stored in the PLC together with the program.\n- **From a file** uploads the `.pub` exported with the program. Use it when the PLC stores no map, or an old one.\n\n**Polling intervals** set how often values are read from the PLC.",
         "menu_options": {
           "reimport_plc": "Re-import the variable map from the PLC",
+          "reimport_file": "Re-import the variable map from a file (.pub)",
           "settings": "Change the polling intervals"
         }
       },
       "init_no_map": {
         "title": "EPSNET",
-        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ The PLC returned no published-variable map; the current map was kept.",
+        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ The PLC returned no published-variable map; the current map was kept. Re-import it from a file instead.\n\n**Re-import the variable map** after changing the PLC program, so Home Assistant reads and switches the right variables. Entities keep their IDs.\n- **From the PLC** reads the map stored in the PLC together with the program.\n- **From a file** uploads the `.pub` exported with the program. Use it when the PLC stores no map, or an old one.\n\n**Polling intervals** set how often values are read from the PLC.",
         "menu_options": {
           "reimport_plc": "Re-import the variable map from the PLC",
+          "reimport_file": "Re-import the variable map from a file (.pub)",
           "settings": "Change the polling intervals"
         }
       }
     },
+    "error": {
+      "path_not_found": "The uploaded file could not be read.",
+      "invalid_pub": "The uploaded file could not be parsed as a .pub map.",
+      "pub_no_match": "The file matches no module found on this PLC — is it from another project? The current map was kept."
+    },
     "progress": {
-      "run_setup": "Re-reading the variable map from the PLC…"
+      "run_setup": "Re-reading the variable map from the PLC…",
+      "run_file_setup": "Matching the uploaded map to the PLC's modules…"
     }
   },
   "issues": {

@@ -349,3 +349,78 @@ async def test_entry_without_a_map_lists_modules_without_entities(hass: HomeAssi
         platforms = ("light.", "switch.", "binary_sensor.")
         assert not [s for s in hass.states.async_all() if s.entity_id.startswith(platforms)]
         assert ir.async_get(hass).async_get_issue(DOMAIN, f"no_variable_map_{entry.entry_id}")
+
+
+def _patch_upload(text: str, tmp_path):
+    """Stand in for HA's file_upload: the form's file id resolves to ``text``."""
+    path = tmp_path / "upload.pub"
+    path.write_text(text, encoding="utf-8")
+
+    @contextlib.contextmanager
+    def _process(_hass, _file_id):
+        yield path
+
+    return patch(
+        "homeassistant.components.file_upload.process_uploaded_file", _process
+    )
+
+
+async def _open_reimport_file_form(hass: HomeAssistant) -> dict:
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] == FlowResultType.MENU
+    assert result["menu_options"] == ["reimport_plc", "reimport_file", "settings"]
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "reimport_file"}
+    )
+    assert result["type"] == FlowResultType.FORM and result["step_id"] == "reimport_file"
+    return result
+
+
+async def test_reimport_from_a_file_replaces_the_map_in_the_same_entry(
+    hass: HomeAssistant, tmp_path
+) -> None:
+    with _patch_client(AsyncMock()):
+        await _run_discover_flow(hass)
+        await hass.async_block_till_done()
+        entry = hass.config_entries.async_entries(DOMAIN)[0]
+        entity_ids = set(hass.states.async_entity_ids())
+        assert entry.data["map"]["source"] == "plc"
+
+        result = await _open_reimport_file_form(hass)
+        with _patch_upload(EXACT_MODEL_FIXTURE, tmp_path):
+            result = await hass.config_entries.options.async_configure(
+                result["flow_id"], {"map_file": "0123456789abcdef0123456789abcdef"}
+            )
+        assert result["type"] == FlowResultType.SHOW_PROGRESS
+        assert result["progress_action"] == "run_file_setup"
+        await hass.async_block_till_done()
+        result = await hass.config_entries.options.async_configure(result["flow_id"])
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+
+    assert hass.config_entries.async_entries(DOMAIN) == [entry]
+    assert entry.data["map"]["source"] == "file"
+    assert set(hass.states.async_entity_ids()) == entity_ids
+
+
+async def test_reimport_from_a_file_of_another_project_keeps_the_map(
+    hass: HomeAssistant, tmp_path
+) -> None:
+    with _patch_client(AsyncMock()):
+        await _run_discover_flow(hass)
+        await hass.async_block_till_done()
+        entry = hass.config_entries.async_entries(DOMAIN)[0]
+        old_map = entry.data["map"]
+
+        result = await _open_reimport_file_form(hass)
+        with _patch_upload("unrelated_counter R W 100 INT PUB_INOUT\n", tmp_path):
+            result = await hass.config_entries.options.async_configure(
+                result["flow_id"], {"map_file": "0123456789abcdef0123456789abcdef"}
+            )
+        await hass.async_block_till_done()
+        result = await hass.config_entries.options.async_configure(result["flow_id"])
+
+    assert result["type"] == FlowResultType.FORM and result["step_id"] == "reimport_file"
+    assert result["errors"] == {"map_file": "pub_no_match"}
+    assert entry.data["map"] == old_map

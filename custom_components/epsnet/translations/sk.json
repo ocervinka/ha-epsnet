@@ -10,6 +10,9 @@
           "port": "Port PLC",
           "local_port": "Lokálny zdrojový port UDP",
           "scan_interval": "Prestávka po každom čítaní (milisekundy, 0 = bez prestávky)"
+        },
+        "data_description": {
+          "scan_interval": "Prestávka po každom úplnom čítaní hodnôt z PLC. Predvolené 500; 0 = ďalšie čítanie hneď. Rýchle čítanie tlačidiel nájdete po nastavení pod Konfigurovať."
         }
       },
       "source": {
@@ -88,46 +91,68 @@
     "step": {
       "init": {
         "title": "EPSNET",
-        "description": "Zdroj: {source} · PLC: {ident} · {points} bodov · CRC {crc}",
+        "description": "Zdroj: {source} · PLC: {ident} · {points} bodov · CRC {crc}\n\n**Znovu načítajte mapu premenných** po zmene programu v PLC, aby Home Assistant čítal a spínal správne premenné. Entity si ponechajú svoje ID.\n- **Z PLC** načíta mapu uloženú v PLC spolu s programom.\n- **Zo súboru** nahrá súbor `.pub` exportovaný s programom. Použite, keď PLC žiadnu mapu neobsahuje, alebo len starú.\n\n**Intervaly čítania** určujú, ako často sa z PLC čítajú hodnoty.",
         "menu_options": {
           "reimport_plc": "Znovu načítať mapu premenných z PLC",
+          "reimport_file": "Znovu načítať mapu premenných zo súboru (.pub)",
           "settings": "Zmeniť intervaly čítania"
         }
       },
       "settings": {
-        "title": "Čítanie",
+        "title": "Intervaly čítania",
+        "description": "Ako často Home Assistant číta hodnoty z PLC. Kratšie intervaly znamenajú rýchlejšie aktualizácie, ale viac sieťovej prevádzky a záťaže PLC. Uloženie integráciu znovu načíta.",
         "data": {
-          "scan_interval": "Prestávka po každom čítaní (milisekundy, 0 = bez prestávky)",
-          "fast_scan_interval": "Rýchle čítanie binárnych vstupov — tlačidlá, PIR snímače (milisekundy, 0 = vypnuté; odporúčané 100)"
+          "scan_interval": "Prestávka medzi úplnými čítaniami (milisekundy)",
+          "fast_scan_interval": "Rýchle čítanie tlačidiel a pohybových snímačov (milisekundy)"
+        },
+        "data_description": {
+          "scan_interval": "Každý cyklus prečíta všetky hodnoty, ktoré integrácia používa (niekoľko sto hodnôt trvá asi pol sekundy), a potom toľko čaká pred ďalším. Predvolené 500; 0 = ďalšie čítanie hneď.",
+          "fast_scan_interval": "Číta len dvojstavové vstupy (tlačidlá na stene, pohybové snímače, kontakty) vo vlastnom krátkom cykle, aby sa krátke stlačenie tlačidla nestratilo medzi úplnými čítaniami. 0 = vypnuté; odporúčané 100 (asi 10 malých dopytov za sekundu)."
+        }
+      },
+      "reimport_file": {
+        "title": "Načítať zo súboru",
+        "description": "Nahrajte súbor `.pub` / `.piz` / `.zip` exportovaný s programom, ktorý teraz beží v PLC. Moduly PLC sa aj tak prejdú naživo, aby sa k nim mapa spárovala. Ak súbor nemožno použiť, ponechá sa pôvodná mapa.",
+        "data": {
+          "map_file": "Exportovaný súbor s mapou"
         }
       },
       "init_plc_busy": {
         "title": "EPSNET",
-        "description": "Zdroj: {source} · PLC: {ident} · {points} bodov · CRC {crc}\n\n⚠️ PLC je obsadené (výhradné spojenie drží iný program). Skúste to znova.",
+        "description": "Zdroj: {source} · PLC: {ident} · {points} bodov · CRC {crc}\n\n⚠️ PLC je obsadené (výhradné spojenie drží iný program). Skúste to znova.\n\n**Znovu načítajte mapu premenných** po zmene programu v PLC, aby Home Assistant čítal a spínal správne premenné. Entity si ponechajú svoje ID.\n- **Z PLC** načíta mapu uloženú v PLC spolu s programom.\n- **Zo súboru** nahrá súbor `.pub` exportovaný s programom. Použite, keď PLC žiadnu mapu neobsahuje, alebo len starú.\n\n**Intervaly čítania** určujú, ako často sa z PLC čítajú hodnoty.",
         "menu_options": {
           "reimport_plc": "Znovu načítať mapu premenných z PLC",
+          "reimport_file": "Znovu načítať mapu premenných zo súboru (.pub)",
           "settings": "Zmeniť intervaly čítania"
         }
       },
       "init_cannot_connect": {
         "title": "EPSNET",
-        "description": "Zdroj: {source} · PLC: {ident} · {points} bodov · CRC {crc}\n\n⚠️ PLC nie je dostupné, mapu sa nepodarilo znovu načítať.",
+        "description": "Zdroj: {source} · PLC: {ident} · {points} bodov · CRC {crc}\n\n⚠️ PLC nie je dostupné, mapu sa nepodarilo znovu načítať.\n\n**Znovu načítajte mapu premenných** po zmene programu v PLC, aby Home Assistant čítal a spínal správne premenné. Entity si ponechajú svoje ID.\n- **Z PLC** načíta mapu uloženú v PLC spolu s programom.\n- **Zo súboru** nahrá súbor `.pub` exportovaný s programom. Použite, keď PLC žiadnu mapu neobsahuje, alebo len starú.\n\n**Intervaly čítania** určujú, ako často sa z PLC čítajú hodnoty.",
         "menu_options": {
           "reimport_plc": "Znovu načítať mapu premenných z PLC",
+          "reimport_file": "Znovu načítať mapu premenných zo súboru (.pub)",
           "settings": "Zmeniť intervaly čítania"
         }
       },
       "init_no_map": {
         "title": "EPSNET",
-        "description": "Zdroj: {source} · PLC: {ident} · {points} bodov · CRC {crc}\n\n⚠️ PLC nevrátilo žiadnu mapu publikovaných premenných; ponechaná pôvodná mapa.",
+        "description": "Zdroj: {source} · PLC: {ident} · {points} bodov · CRC {crc}\n\n⚠️ PLC nevrátilo žiadnu mapu publikovaných premenných; ponechaná pôvodná mapa. Načítajte ju radšej zo súboru.\n\n**Znovu načítajte mapu premenných** po zmene programu v PLC, aby Home Assistant čítal a spínal správne premenné. Entity si ponechajú svoje ID.\n- **Z PLC** načíta mapu uloženú v PLC spolu s programom.\n- **Zo súboru** nahrá súbor `.pub` exportovaný s programom. Použite, keď PLC žiadnu mapu neobsahuje, alebo len starú.\n\n**Intervaly čítania** určujú, ako často sa z PLC čítajú hodnoty.",
         "menu_options": {
           "reimport_plc": "Znovu načítať mapu premenných z PLC",
+          "reimport_file": "Znovu načítať mapu premenných zo súboru (.pub)",
           "settings": "Zmeniť intervaly čítania"
         }
       }
     },
+    "error": {
+      "path_not_found": "Nahraný súbor sa nedá prečítať.",
+      "invalid_pub": "Nahraný súbor nie je platná mapa .pub.",
+      "pub_no_match": "Súbor nezodpovedá žiadnemu modulu nájdenému v tomto PLC — nie je z iného projektu? Ponechaná pôvodná mapa."
+    },
     "progress": {
-      "run_setup": "Znovu čítam mapu premenných z PLC…"
+      "run_setup": "Znovu čítam mapu premenných z PLC…",
+      "run_file_setup": "Párujem nahranú mapu s modulmi PLC…"
     }
   },
   "issues": {
