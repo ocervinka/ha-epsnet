@@ -59,6 +59,14 @@
           "discover": "Načíst z PLC (doporučeno)",
           "upload": "Nahrát soubor .pub"
         }
+      },
+      "source_no_map": {
+        "title": "Zdroj mapy proměnných",
+        "description": "Načtěte mapu publikovaných proměnných přímo z PLC (doporučeno), nebo nahrajte exportovaný soubor .pub.\n\n⚠️ V PLC není uložená mapa publikovaných proměnných (není v něm soubor .pub — např. program nahraný z Mosaicu). Nahrajte místo toho soubor .pub z vašeho projektu; v Mosaicu v Project manager → Sw → Export files zapněte Assembler (.pub) a program přeložte.",
+        "menu_options": {
+          "discover": "Načíst z PLC (doporučeno)",
+          "upload": "Nahrát soubor .pub"
+        }
       }
     },
     "progress": {
@@ -108,6 +116,14 @@
           "reimport_plc": "Znovu načíst mapu proměnných z PLC",
           "settings": "Změnit intervaly čtení"
         }
+      },
+      "init_no_map": {
+        "title": "EPSNET",
+        "description": "Zdroj: {source} · PLC: {ident} · {points} bodů · CRC {crc}\n\n⚠️ PLC nevrátilo žádnou mapu publikovaných proměnných; ponechána stávající mapa.",
+        "menu_options": {
+          "reimport_plc": "Znovu načíst mapu proměnných z PLC",
+          "settings": "Změnit intervaly čtení"
+        }
       }
     },
     "progress": {
@@ -122,6 +138,10 @@
     "unsupported_modules": {
       "title": "EPSNET: moduly PLC zatím nejsou podporované",
       "description": "{count} modul(ů) na sběrnici PLC zatím není podporováno ({codes}), proto nemají žádné entity. Pokud je chcete pomoci doplnit, otevřete integraci EPSNET, zvolte ⋮ → Stáhnout diagnostiku a soubor přiložte k hlášení na {issue_url}. Soubor obsahuje názvy proměnných z vašeho programu; klidně je v něm přepište."
+    },
+    "no_variable_map": {
+      "title": "EPSNET: chybí mapa proměnných PLC",
+      "description": "Tato položka nemá mapu publikovaných proměnných, proto je {count} modul(ů) uvedeno bez entit: bez mapy není známo, kde jsou jejich data ani jak je spínat. Otevřete integraci a zvolte Konfigurovat → Znovu načíst mapu proměnných z PLC, nebo integraci odstraňte, přidejte znovu a nahrajte soubor .pub z programu."
     }
   },
   "entity": {

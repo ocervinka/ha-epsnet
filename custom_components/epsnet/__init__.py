@@ -102,6 +102,31 @@ async def _async_register_runtime_devices(hass, *, entry_id: str, catalog: Entit
         )
 
 
+def _async_update_no_map_issue(
+    hass, entry, catalog: EntityCatalog, *, has_map: bool
+) -> None:
+    """Raise (or clear) a Repairs notice when the entry has no variable map."""
+    from homeassistant.helpers import issue_registry as ir
+
+    issue_id = f"no_variable_map_{entry.entry_id}"
+    if has_map:
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
+        return
+    LOGGER.warning(
+        "No published-variable map for %s: modules are listed without entities",
+        entry.title,
+    )
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="no_variable_map",
+        translation_placeholders={"count": str(len(catalog.runtime_inventory.devices))},
+    )
+
+
 def _async_update_unsupported_issue(hass, entry, catalog: EntityCatalog) -> None:
     """Raise (or clear) a Repairs notice listing modules with no definition yet.
 
@@ -157,12 +182,12 @@ def _resolve_entry_map(entry) -> tuple[tuple[PubEntry, ...], str, str | None]:
             return load_pub_entries(map_path), "file", None
         except FileNotFoundError:
             LOGGER.warning(
-                "Configured `.pub` file %s is unavailable; runtime-only discovery",
+                "Configured `.pub` file %s is unavailable; modules listed without entities",
                 map_path,
             )
         except PubFileParseError as err:
             LOGGER.warning(
-                "Configured `.pub` file %s is invalid (%s); runtime-only discovery",
+                "Configured `.pub` file %s is invalid (%s); modules listed without entities",
                 map_path,
                 err,
             )
@@ -263,6 +288,7 @@ async def async_setup_entry(hass, entry) -> bool:
 
         catalog = build_catalog(entries, inventory)
         _async_update_unsupported_issue(hass, entry, catalog)
+        _async_update_no_map_issue(hass, entry, catalog, has_map=bool(entries))
         if entries and not catalog.devices_by_key:
             LOGGER.warning(
                 "Configured `.pub` file %s did not match any live discovered devices; "

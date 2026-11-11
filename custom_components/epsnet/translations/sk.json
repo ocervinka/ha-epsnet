@@ -59,6 +59,14 @@
           "discover": "Načítať z PLC (odporúčané)",
           "upload": "Nahrať súbor .pub"
         }
+      },
+      "source_no_map": {
+        "title": "Zdroj mapy premenných",
+        "description": "Načítajte mapu publikovaných premenných priamo z PLC (odporúčané), alebo nahrajte exportovaný súbor .pub.\n\n⚠️ V PLC nie je uložená mapa publikovaných premenných (nie je v ňom súbor .pub — napr. program nahraný z Mosaicu). Nahrajte namiesto toho súbor .pub z vášho projektu; v Mosaicu v Project manager → Sw → Export files zapnite Assembler (.pub) a program preložte.",
+        "menu_options": {
+          "discover": "Načítať z PLC (odporúčané)",
+          "upload": "Nahrať súbor .pub"
+        }
       }
     },
     "progress": {
@@ -108,6 +116,14 @@
           "reimport_plc": "Znovu načítať mapu premenných z PLC",
           "settings": "Zmeniť intervaly čítania"
         }
+      },
+      "init_no_map": {
+        "title": "EPSNET",
+        "description": "Zdroj: {source} · PLC: {ident} · {points} bodov · CRC {crc}\n\n⚠️ PLC nevrátilo žiadnu mapu publikovaných premenných; ponechaná pôvodná mapa.",
+        "menu_options": {
+          "reimport_plc": "Znovu načítať mapu premenných z PLC",
+          "settings": "Zmeniť intervaly čítania"
+        }
       }
     },
     "progress": {
@@ -122,6 +138,10 @@
     "unsupported_modules": {
       "title": "EPSNET: moduly PLC zatiaľ nie sú podporované",
       "description": "{count} modul(ov) na zbernici PLC zatiaľ nie je podporovaných ({codes}), preto nemajú žiadne entity. Ak ich chcete pomôcť doplniť, otvorte integráciu EPSNET, zvoľte ⋮ → Stiahnuť diagnostiku a súbor priložte k hláseniu na {issue_url}. Súbor obsahuje názvy premenných z vášho programu; pokojne ich v ňom prepíšte."
+    },
+    "no_variable_map": {
+      "title": "EPSNET: chýba mapa premenných PLC",
+      "description": "Táto položka nemá mapu publikovaných premenných, preto je {count} modul(ov) uvedených bez entít: bez mapy nie je známe, kde sú ich dáta ani ako ich spínať. Otvorte integráciu a zvoľte Konfigurovať → Znovu načítať mapu premenných z PLC, alebo integráciu odstráňte, pridajte znova a nahrajte súbor .pub z programu."
     }
   },
   "entity": {

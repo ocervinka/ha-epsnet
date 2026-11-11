@@ -490,45 +490,20 @@ def test_match_without_program_positions_falls_back_to_runtime_order() -> None:
     assert matched["sw_b"].runtime_slot_index == 1
 
 
-def test_build_catalog_supports_runtime_only_mode_without_pub_entries() -> None:
-    # 0x0C36: WSB2-40 (5 channels: 1 temp + 4 buttons)
-    # 0x0C1D: DA2-22M (4 channels: 2 state + 2 value)
-    # 0x0C25: IM2-140M (14 channels)
+def test_build_catalog_without_a_map_lists_modules_but_creates_no_entities() -> None:
+    # Without the variable map the start of the CIB data in X/Y is unknown, so
+    # the modules are listed as devices but no entity reads a guessed address.
     runtime_inventory = _make_runtime_inventory([0x0C36, 0x0C1D, 0x0C25])
 
     catalog = build_catalog((), runtime_inventory)
 
-    assert len(catalog.devices_by_key) == 3
-    assert "runtime_40015382_00" in catalog.devices_by_key # WSB2-40
-    assert "runtime_40015382_01" in catalog.devices_by_key # DA2-22M
-    assert "runtime_40015382_02" in catalog.devices_by_key # IM2-140M
-
-    # WSB2-40: 1 temp sensor + 4 binary sensors (buttons) + 4 lights (LEDs)
-    # DA2-22M: 2 lights
-    # IM2-140M: 14 binary sensors
-    # Total entities: 9 + 2 + 14 = 25
-    assert len(catalog.entities) == 25
-
-    # Check WSB2-40 entities
-    wsb_entities = [e for e in catalog.entities if e.device_key == "runtime_40015382_00"]
-    assert len(wsb_entities) == 9
-    assert len([e for e in wsb_entities if e.platform == "sensor"]) == 1
-    assert len([e for e in wsb_entities if e.platform == "binary_sensor"]) == 4
-    assert len([e for e in wsb_entities if e.platform == "light"]) == 4
-
-    # Check DA2-22M entities
-    da_entities = [e for e in catalog.entities if e.device_key == "runtime_40015382_01"]
-    assert len(da_entities) == 2
-    assert all(e.platform == "light" for e in da_entities)
-    assert all(e.supports_brightness for e in da_entities)
-
-    # Check IM2-140M entities
-    im_entities = [e for e in catalog.entities if e.device_key == "runtime_40015382_02"]
-    assert len(im_entities) == 14
-    assert all(e.platform == "binary_sensor" for e in im_entities)
-
-    # Unmatched runtime devices are preserved for diagnostics
-    assert len(catalog.unmatched_runtime_devices) == 3
+    assert sorted(catalog.devices_by_key) == [
+        "runtime_40015382_00",
+        "runtime_40015382_01",
+        "runtime_40015382_02",
+    ]
+    assert catalog.entities == ()
+    assert catalog.state_names == ()
     assert [d.model for d in catalog.unmatched_runtime_devices] == ["WSB2-40", "DA2-22M", "IM2-140M"]
 
 
@@ -541,7 +516,6 @@ def test_unknown_module_codes_get_no_device_and_are_reported() -> None:
     catalog = build_catalog((), runtime_inventory)
 
     assert list(catalog.devices_by_key) == ["runtime_40015382_01"]
-    assert all(e.device_key == "runtime_40015382_01" for e in catalog.entities)
     assert [d.runtime_type_code for d in catalog.runtime_inventory.devices] == [0x0C36]
     assert [d.slot_index for d in catalog.unsupported_runtime_devices] == [0, 2, 3]
     assert unsupported_module_summary(catalog) == (3, "0x0c38, 0x0d31 ×2")

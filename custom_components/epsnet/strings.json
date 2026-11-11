@@ -59,6 +59,14 @@
           "discover": "Discover from the PLC (recommended)",
           "upload": "Upload a .pub file"
         }
+      },
+      "source_no_map": {
+        "title": "Choose the variable map source",
+        "description": "Discover the published-variable map straight from the PLC (recommended), or upload an exported .pub file.\n\n⚠️ The PLC holds no published-variable map (no .pub was stored in it — e.g. a program loaded from Mosaic). Upload the .pub file from your project instead; in Mosaic, enable it under Project manager → Sw → Export files → Assembler (.pub) and rebuild.",
+        "menu_options": {
+          "discover": "Discover from the PLC (recommended)",
+          "upload": "Upload a .pub file"
+        }
       }
     },
     "progress": {
@@ -108,6 +116,14 @@
           "reimport_plc": "Re-import the variable map from the PLC",
           "settings": "Change the polling intervals"
         }
+      },
+      "init_no_map": {
+        "title": "EPSNET",
+        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ The PLC returned no published-variable map; the current map was kept.",
+        "menu_options": {
+          "reimport_plc": "Re-import the variable map from the PLC",
+          "settings": "Change the polling intervals"
+        }
       }
     },
     "progress": {
@@ -122,6 +138,10 @@
     "unsupported_modules": {
       "title": "EPSNET: PLC modules not supported yet",
       "description": "{count} module(s) on the PLC bus are not supported yet ({codes}), so they have no entities. To help add them, open the EPSNET integration, choose ⋮ → Download diagnostics and attach the file to an issue at {issue_url}. The file contains your PLC variable names; rename them in the file if you prefer."
+    },
+    "no_variable_map": {
+      "title": "EPSNET: no PLC variable map",
+      "description": "This entry has no published-variable map, so its {count} module(s) are listed without entities: without the map it is unknown where their data sits and how to switch them. Open the integration, choose Configure → Re-import the variable map from the PLC, or delete and re-add the integration and upload the program's .pub file."
     }
   },
   "entity": {

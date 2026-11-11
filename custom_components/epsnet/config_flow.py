@@ -196,6 +196,12 @@ class EpsnetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._error = "cannot_connect"
         return await self.async_step_source()
 
+    async def async_step_source_no_map(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        self._error = "no_map"
+        return await self.async_step_source()
+
     async def async_step_discover(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -292,6 +298,13 @@ class EpsnetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except (EpsnetError, OSError) as err:
             LOGGER.warning("EPSNET setup failed: %s", err)
             self._error = "cannot_connect"
+            await self._async_close_client()
+            return self.async_show_progress_done(next_step_id="source")
+
+        if not self._result.address_count:
+            # No map, no values: without it the CIB data's place in X/Y is
+            # unknown and nothing can be switched. Ask for the .pub instead.
+            self._error = "no_map"
             await self._async_close_client()
             return self.async_show_progress_done(next_step_id="source")
 
@@ -403,6 +416,12 @@ class EpsnetOptionsFlow(config_entries.OptionsFlow):
         self._error = "cannot_connect"
         return await self.async_step_init()
 
+    async def async_step_init_no_map(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        self._error = "no_map"
+        return await self.async_step_init()
+
     # -- Scan interval -------------------------------------------------------
 
     async def async_step_settings(
@@ -472,6 +491,10 @@ class EpsnetOptionsFlow(config_entries.OptionsFlow):
         except (EpsnetError, OSError) as err:
             LOGGER.warning("EPSNET re-import failed: %s", err)
             self._error = "cannot_connect"
+            return self.async_show_progress_done(next_step_id="init")
+        if not self._result.address_count:
+            # Never replace a working map with an empty one.
+            self._error = "no_map"
             return self.async_show_progress_done(next_step_id="init")
         return self.async_show_progress_done(next_step_id="reimport_done")
 

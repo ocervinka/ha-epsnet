@@ -135,8 +135,8 @@ async def _resolve_addresses(
             LOGGER.info("Using user .pub file: %d points", len(entries))
             return entries, "file", None
 
-    # 3. None -- runtime-inventory-only (generic; addresses limited to what the scan
-    #    can derive). Phase 2 will add a generic-scan naming layer here.
+    # 3. None -- the modules can be listed, but without the map nothing can be
+    #    read or switched (the config flow then asks for the .pub file).
     return (), "none", None
 
 

@@ -293,3 +293,59 @@ async def test_migration_drops_slot_identifiers_from_map_devices(hass: HomeAssis
     assert registry.async_get(slot_device.id).identifiers == {
         (DOMAIN, f"{entry.entry_id}_runtime_40015382_09")
     }
+
+
+async def test_discover_without_a_map_asks_for_the_pub_file(hass: HomeAssistant) -> None:
+    """A PLC with no stored .pub (e.g. a Mosaic program) must not create an entry."""
+
+    async def _inventory(*_a, **_k):
+        await asyncio.sleep(0)
+        return SYNTH_INVENTORY
+
+    async def _no_map(*_a, **_k):
+        await asyncio.sleep(0)
+        return ("SIM PLC", ())
+
+    with patch.multiple(
+        _CLIENT,
+        discover_runtime_inventory=AsyncMock(side_effect=_inventory),
+        async_fetch_pub_from_plc=AsyncMock(side_effect=_no_map),
+        async_close=AsyncMock(),
+    ):
+        result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"name": "EPSNET", "host": "127.0.0.1", "port": 61682,
+             "local_port": 61681, "scan_interval": 500},
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"next_step_id": "discover"}
+        )
+        await hass.async_block_till_done()
+        result = await hass.config_entries.flow.async_configure(result["flow_id"])
+
+    assert result["type"] == FlowResultType.MENU
+    assert result["step_id"] == "source_no_map"
+    assert not hass.config_entries.async_entries(DOMAIN)
+
+
+async def test_entry_without_a_map_lists_modules_without_entities(hass: HomeAssistant) -> None:
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import issue_registry as ir
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN, version=4, minor_version=2, title="EPSNET",
+        data={"name": "EPSNET", "host": "127.0.0.1", "port": 61682,
+              "local_port": 61681, "scan_interval": 500},
+    )
+    entry.add_to_hass(hass)
+    with _patch_client(AsyncMock()):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        assert entry.state is ConfigEntryState.LOADED
+        assert dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)
+        platforms = ("light.", "switch.", "binary_sensor.")
+        assert not [s for s in hass.states.async_all() if s.entity_id.startswith(platforms)]
+        assert ir.async_get(hass).async_get_issue(DOMAIN, f"no_variable_map_{entry.entry_id}")

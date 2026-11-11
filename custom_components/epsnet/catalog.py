@@ -677,8 +677,6 @@ def _match_runtime_inventory(
     return matched, tuple(unmatched_runtime), unmatched_pub
 
 
-_RUNTIME_SLOT_STRIDE = 5
-_RUNTIME_R_BUS_BASE = 20000
 
 
 def _binary_sensor_device_class(channel_name: str) -> str | None:
@@ -864,52 +862,6 @@ def _build_pub_entity_specs(
     return specs
 
 
-def _build_runtime_only_specs(
-    runtime_inventory: RuntimeInventory,
-    runtime_devices: tuple[RuntimeDiscoveredDevice, ...],
-) -> tuple[list[EntitySpec], list[PubEntry]]:
-    specs: list[EntitySpec] = []
-    virtual_entries: list[PubEntry] = []
-    devices_by_group = defaultdict(list)
-    for device in runtime_inventory.devices: devices_by_group[device.group_token].append(device)
-    device_addresses = {}
-    for group in runtime_inventory.groups:
-        base_in = group.off_in - runtime_inventory.cpu_off_in
-        base_out = group.off_out - runtime_inventory.cpu_off_out
-        ci, co = base_in, base_out
-        for device in sorted(devices_by_group[group.token], key=lambda d: d.runtime_index):
-            device_addresses[device.registry_key] = {"X": ci, "Y": co, "R": _RUNTIME_R_BUS_BASE + (device.runtime_index * _RUNTIME_SLOT_STRIDE)}
-            ci += device.model_info.input_size
-            co += device.model_info.output_size
-
-    for device in runtime_devices:
-        entity_builders: dict[str, dict] = defaultdict(dict)
-        bases = device_addresses.get(device.registry_key)
-        if not bases: continue
-        for chan_def in device.model_info.channels:
-            if chan_def.role == "local_switch":
-                continue
-            if chan_def.role == "binary_input" and device.type_key == "generic_dimmer_module":
-                continue
-            base_address = bases.get(chan_def.register, _RUNTIME_R_BUS_BASE)
-            address = base_address + chan_def.address_offset
-            try: name = chan_def.name_template.format(channel=chan_def.channel_index)
-            except: name = chan_def.name_template
-            entry_name = f"{device.registry_key}_{name}_{chan_def.register}"
-            entry = PubEntry(name=entry_name, register=chan_def.register, storage=chan_def.storage, address=address, bit=chan_def.bit_offset, data_type=chan_def.data_type, access="PUB_OUT", line_number=0, is_virtual=True)
-            virtual_entries.append(entry)
-            builder = entity_builders[name]
-            builder.update({"name": name, "device_key": device.registry_key, "type_key": device.type_key, "state_name": entry_name, "value_kind": entry.value_kind})
-            if chan_def.role == "temperature": builder.update({"platform": "sensor", "device_class": "temperature", "native_unit": "°C"})
-            elif chan_def.role in {"input_channel", "button_input", "binary_input"}: builder.update({"platform": "binary_sensor"})
-            elif chan_def.role in {"led_state", "channel_state"}:
-                 platform = "light" if device.type_key == "generic_dimmer_module" or chan_def.role == "led_state" else "switch"
-                 builder.update({"platform": platform})
-        for name, b in entity_builders.items():
-            specs.append(EntitySpec(key=_slugify(f"{b['device_key']}_{name}"), platform=b.get("platform", "switch"), name=name, state_name=b["state_name"], value_kind=b["value_kind"], device_class=b.get("device_class"), native_unit_of_measurement=b.get("native_unit"), device_key=b["device_key"], supports_brightness=(b["type_key"] == "generic_dimmer_module")))
-    return specs, virtual_entries
-
-
 def build_catalog(
     entries: tuple[PubEntry, ...], runtime_inventory: RuntimeInventory
 ) -> EntityCatalog:
@@ -964,12 +916,11 @@ def build_catalog(
         entry_to_channel_name,
     )
 
-    runtime_only_specs, virtual_entries = _build_runtime_only_specs(
-        runtime_inventory, unmatched_runtime_devices
-    )
-    entities = tuple(pub_entities) + tuple(runtime_only_specs)
-    for virtual in virtual_entries:
-        entries_by_name.setdefault(virtual.name, virtual)
+    # Modules the map does not cover are listed as devices but get no entities:
+    # without the map, where their data starts in the X/Y images is unknown
+    # (the order and sizes are known, the start is not), and guessed addresses
+    # would show plausible-looking wrong values.
+    entities = tuple(pub_entities)
     state_names = tuple(dict.fromkeys(entity.state_name for entity in entities))
 
     for runtime_device in unmatched_runtime_devices:
