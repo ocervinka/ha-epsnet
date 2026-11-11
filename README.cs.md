@@ -18,8 +18,9 @@ v upozornění v **Opravách**, takže víte, co chybí.
 ## Co umí
 
 - přímá komunikace EPSNET UDP, PLCComS není potřeba
-- při nastavení projde PLC a zjistí, které moduly CIB jsou skutečně připojené
-- mapu publikovaných proměnných načte přímo z běžícího programu v PLC (nebo z nahraného `.pub`)
+- při nastavení projde PLC a zjistí, které moduly CIB jsou skutečně připojené; každé zařízení z mapy
+  proměnných přiřadí ke správnému modulu podle jeho pořadí v programu PLC
+- mapu publikovaných proměnných (soubor `.pub` programu) načte přímo z PLC, nebo z nahraného souboru
 - entity pro světla, spínače, binární vstupy (tlačítka, PIR, magnetické kontakty) a teploty
 - rychlé čtení binárních vstupů (např. každých 100 ms), aby se zachytil i krátký stisk tlačítka
 - diagnostika a senzory s dobou čtení
@@ -58,9 +59,26 @@ Zkopírujte složku `custom_components/epsnet` do konfigurační složky Home As
    `.zip`**.
 3. **Potvrzení** — ukáže identifikaci PLC, počet nalezených modulů a publikovaných bodů.
 
-Mapa se uloží do konfigurace integrace. Když se program v PLC změní, integrace to pozná (CRC
-mapy), novou mapu použije a zobrazí upozornění v Opravách. Přes **Nastavit** u integrace lze mapu
-znovu načíst a změnit intervaly čtení včetně rychlého čtení vstupů (doporučeno 100 ms).
+Mapa se uloží do konfigurace integrace a sama se znovu nenačítá: po změně programu v PLC zvolte
+**Nastavit → Znovu načíst mapu proměnných z PLC** (pokud se mapa opravdu změnila, ukáže se
+upozornění v Opravách). Tamtéž lze změnit intervaly čtení včetně rychlého čtení vstupů (doporučeno
+100 ms).
+
+### Mapa proměnných je nutná
+
+Mapa je soubor `.pub` programu: seznam publikovaných proměnných s jejich názvy a adresami v PLC.
+Integrace z ní čte hodnoty a přes ni spíná (proměnné programu `_ON` / `_OFF`). Samotné procházení
+PLC zjistí, které moduly jsou připojené, v jakém pořadí a jak velké, ale ne, kde jejich data
+v paměti PLC začínají — bez mapy se proto moduly zobrazí jako zařízení bez entit a nastavení si
+o soubor řekne.
+
+- **FoxTool** ukládá `.pub` do PLC při každém nahrání programu, takže ho *načtení z PLC* najde.
+- **Mosaic** ho ukládá do složky projektu v počítači, a jen když je v *Project manager → Sw → Export
+  files* zapnutý *Assembler (.pub)*. Ten soubor nahrajte.
+
+Procházení PLC a načtení mapy používají dočasný port UDP, takže se FoxTool, Mosaic i Firmware
+Updater mohou k PLC připojit, i když běží Home Assistant (výhradní spojení s PLC je obsazené jen
+několik minut při načítání mapy).
 
 ## Jazyky
 

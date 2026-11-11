@@ -18,16 +18,16 @@ Modules the integration doesn't know yet are not created as devices; they are li
 ## Current capabilities
 
 - direct EPSNET UDP transport; PLCComS is not required
-- live runtime discovery of the installed CIB inventory during setup
-- runtime-only onboarding without a `.pub` file
-- optional `.pub` enrichment for names and mapped entities
+- live discovery of the installed CIB modules during setup; each device from the variable map is
+  paired with its physical module by the module's position in the PLC program
+- the published-variable map (the program's `.pub`) read straight from the PLC, or uploaded
 - Home Assistant entities for lights, switches, binary sensors, and sensors
 - grouped/block polling by default, with automatic fallback to one-by-one reads on grouped-read errors
 - diagnostic merged-catalog output plus poll timing sensors
 
-## Supported runtime-first device families
+## Supported modules
 
-The integration currently ships runtime profiles for:
+The integration currently knows the data layout of:
 
 - `SA2-04M`
 - `SA2-012M`
@@ -71,8 +71,26 @@ Copy `custom_components/epsnet` into your Home Assistant config directory under
    points.
 
 Either way the PLC's module inventory is also scanned live, so entities are created only for
-hardware that is actually there. The map is stored in the config entry; if the PLC program
-changes, the integration notices (map CRC), applies the new map and raises a repair notice.
+hardware that is actually there. The map is stored in the config entry and is not re-read on its
+own: after changing the PLC program, use **Configure → Re-import the variable map from the PLC**
+(a repair notice tells you when the map actually changed).
+
+### The variable map is required
+
+The map is the program's `.pub` file: the list of published variables with their names and
+addresses in the PLC. It is what the integration reads values from and switches through (the
+program's `_ON` / `_OFF` command variables). Discovery alone finds which modules are installed, in
+which order and how large they are, but not where their data starts in the PLC's memory — so
+without a map the modules are listed as devices with no entities, and setup asks for the file.
+
+- **FoxTool** stores the `.pub` in the PLC when it loads the program, so *discover from the
+  PLC* finds it.
+- **Mosaic** writes it to the project folder on your PC, and only with *Project manager → Sw →
+  Export files → Assembler (.pub)* enabled. Upload that file.
+
+Discovery and the map fetch use a temporary UDP port, so FoxTool, Mosaic and the Firmware Updater
+can connect to the PLC while Home Assistant is running (the PLC's single management session is taken only
+during the few minutes of a map fetch).
 
 **Configure** on the integration later offers *Re-import the variable map from the PLC* and the
 polling intervals, including the fast lane below. *Reconfigure* changes host and ports.
@@ -115,10 +133,7 @@ Grouped/block polling is the default production read path.
 
 - The direct EPSNET backend is reverse-engineered and intentionally focused on the request/response
   patterns needed by the current entity set.
-- Runtime-only mode is already usable, but some installations still benefit from `.pub` enrichment for
-  clearer naming and mapping.
-- Packed Y-register fallback for some SA2 output-state layouts is not complete yet; if your setup relies
-  on those state layouts, providing a `.pub` export is recommended.
+- Without a variable map nothing can be read or switched (see above).
 - Advanced room-controller features such as richer HVAC/setpoint behavior are still out of scope for the
   current public release.
 
