@@ -243,3 +243,31 @@ def test_map_snapshot_lists_every_variable_like_a_pub_line() -> None:
     assert snap["entry_count"] == 2
     assert snap["entries"] == ["lamp_a_ON R B 100 .0 BOOL PUB_INOUT", "room_temp X F 71 REAL PUB_INOUT"]
     assert map_snapshot(None) == {"source": "none", "entry_count": 0, "entries": []}
+
+
+def test_anonymize_replaces_own_words_consistently_and_keeps_structure() -> None:
+    from custom_components.epsnet.diagnostics import anonymize_names
+
+    names = [
+        "OUTPUT_M3_light_hall_ON",
+        "state_OUTPUT_M3_light_hall",
+        "SW_study_pir_ATTIC",
+        "OUTPUT_M4_plug_hall",
+    ]
+    data = {
+        "map": {"entries": [f"{n} R B 1 .0 BOOL PUB_INOUT" for n in names]},
+        "catalog": {"groups": [{"label": "CIB study", "devices": [
+            {"pub_match": {"device_name": "Study", "entity_keys": ["output_m3_light_hall"]},
+             "raw_hex": "hall"}]}]},
+    }
+    out = anonymize_names(data, names)
+    lines = out["map"]["entries"]
+    assert lines[0] == "OUTPUT_M3_light_w1_ON R B 1 .0 BOOL PUB_INOUT"
+    assert lines[1].startswith("state_OUTPUT_M3_light_w1 ")
+    assert lines[2].startswith("SW_w2_pir_W3 ")
+    assert lines[3].startswith("OUTPUT_M4_plug_w1 ")
+    match = out["catalog"]["groups"][0]["devices"][0]
+    assert match["pub_match"] == {"device_name": "w2", "entity_keys": ["output_m3_light_w1"]}
+    # fields that carry no variable names are left alone
+    assert out["catalog"]["groups"][0]["label"] == "CIB study"
+    assert match["raw_hex"] == "hall"

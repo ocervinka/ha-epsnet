@@ -92,23 +92,25 @@
     "step": {
       "init": {
         "title": "EPSNET",
-        "description": "Zdroj: {source} · PLC: {ident} · {points} bodů · CRC {crc}\n\n**Znovu načtěte mapu proměnných** po změně programu v PLC, aby Home Assistant četl a spínal správné proměnné. Entity si ponechají svá ID.\n- **Z PLC** načte mapu uloženou v PLC spolu s programem.\n- **Ze souboru** nahraje soubor `.pub` exportovaný s programem. Použijte, když PLC žádnou mapu neobsahuje, nebo jen starou.\n\n**Intervaly čtení** určují, jak často se z PLC čtou hodnoty.",
+        "description": "Zdroj: {source} · PLC: {ident} · {points} bodů · CRC {crc}\n\n**Znovu načtěte mapu proměnných** po změně programu v PLC, aby Home Assistant četl a spínal správné proměnné. Entity si ponechají svá ID.\n- **Z PLC** načte mapu uloženou v PLC spolu s programem.\n- **Ze souboru** nahraje soubor `.pub` exportovaný s programem. Použijte, když PLC žádnou mapu neobsahuje, nebo jen starou.\n\n**Intervaly čtení a diagnostika** určují, jak často se z PLC čtou hodnoty a zda se v diagnostice skryjí názvy proměnných.",
         "menu_options": {
           "reimport_plc": "Znovu načíst mapu proměnných z PLC",
           "reimport_file": "Znovu načíst mapu proměnných ze souboru (.pub)",
-          "settings": "Změnit intervaly čtení"
+          "settings": "Intervaly čtení a diagnostika"
         }
       },
       "settings": {
-        "title": "Intervaly čtení",
+        "title": "Intervaly čtení a diagnostika",
         "description": "Jak často Home Assistant čte hodnoty z PLC. Kratší intervaly znamenají rychlejší aktualizace, ale víc síťového provozu a zátěže PLC. Uložení integraci znovu načte.",
         "data": {
           "scan_interval": "Prodleva mezi úplnými čteními (milisekundy)",
-          "fast_scan_interval": "Rychlé čtení tlačítek a pohybových čidel (milisekundy)"
+          "fast_scan_interval": "Rychlé čtení tlačítek a pohybových čidel (milisekundy)",
+          "anonymize_diagnostics": "Skrýt názvy proměnných v diagnostice"
         },
         "data_description": {
           "scan_interval": "Každý cyklus přečte všechny hodnoty, které integrace používá (několik set hodnot trvá asi půl sekundy), a pak tak dlouho čeká před dalším. Výchozí 500; 0 = další čtení hned.",
-          "fast_scan_interval": "Čte jen dvoustavové vstupy (tlačítka na zdi, pohybová čidla, kontakty) ve vlastním krátkém cyklu, aby se krátký stisk tlačítka neztratil mezi úplnými čteními. 0 = vypnuto; doporučeno 100 (asi 10 malých dotazů za sekundu)."
+          "fast_scan_interval": "Čte jen dvoustavové vstupy (tlačítka na zdi, pohybová čidla, kontakty) ve vlastním krátkém cyklu, aby se krátký stisk tlačítka neztratil mezi úplnými čteními. 0 = vypnuto; doporučeno 100 (asi 10 malých dotazů za sekundu).",
+          "anonymize_diagnostics": "Slova v názvech proměnných vašeho programu (místnosti, jména…) nahradí v ⋮ → Stáhnout diagnostiku zástupnými slovy w1, w2…, takže soubor můžete sdílet veřejně. Stejné slovo dostane vždy stejnou náhradu, takže soubor zůstane použitelný. Slova, podle kterých integrace sama rozhoduje (light, plug, pir, magnet, ON/OFF…), a kódy modulů zůstanou."
         }
       },
       "reimport_file": {
@@ -120,29 +122,29 @@
       },
       "init_plc_busy": {
         "title": "EPSNET",
-        "description": "Zdroj: {source} · PLC: {ident} · {points} bodů · CRC {crc}\n\n⚠️ PLC je obsazené (výhradní spojení drží jiný program). Zkuste to znovu.\n\n**Znovu načtěte mapu proměnných** po změně programu v PLC, aby Home Assistant četl a spínal správné proměnné. Entity si ponechají svá ID.\n- **Z PLC** načte mapu uloženou v PLC spolu s programem.\n- **Ze souboru** nahraje soubor `.pub` exportovaný s programem. Použijte, když PLC žádnou mapu neobsahuje, nebo jen starou.\n\n**Intervaly čtení** určují, jak často se z PLC čtou hodnoty.",
+        "description": "Zdroj: {source} · PLC: {ident} · {points} bodů · CRC {crc}\n\n⚠️ PLC je obsazené (výhradní spojení drží jiný program). Zkuste to znovu.\n\n**Znovu načtěte mapu proměnných** po změně programu v PLC, aby Home Assistant četl a spínal správné proměnné. Entity si ponechají svá ID.\n- **Z PLC** načte mapu uloženou v PLC spolu s programem.\n- **Ze souboru** nahraje soubor `.pub` exportovaný s programem. Použijte, když PLC žádnou mapu neobsahuje, nebo jen starou.\n\n**Intervaly čtení a diagnostika** určují, jak často se z PLC čtou hodnoty a zda se v diagnostice skryjí názvy proměnných.",
         "menu_options": {
           "reimport_plc": "Znovu načíst mapu proměnných z PLC",
           "reimport_file": "Znovu načíst mapu proměnných ze souboru (.pub)",
-          "settings": "Změnit intervaly čtení"
+          "settings": "Intervaly čtení a diagnostika"
         }
       },
       "init_cannot_connect": {
         "title": "EPSNET",
-        "description": "Zdroj: {source} · PLC: {ident} · {points} bodů · CRC {crc}\n\n⚠️ PLC nelze kontaktovat, mapu se nepodařilo znovu načíst.\n\n**Znovu načtěte mapu proměnných** po změně programu v PLC, aby Home Assistant četl a spínal správné proměnné. Entity si ponechají svá ID.\n- **Z PLC** načte mapu uloženou v PLC spolu s programem.\n- **Ze souboru** nahraje soubor `.pub` exportovaný s programem. Použijte, když PLC žádnou mapu neobsahuje, nebo jen starou.\n\n**Intervaly čtení** určují, jak často se z PLC čtou hodnoty.",
+        "description": "Zdroj: {source} · PLC: {ident} · {points} bodů · CRC {crc}\n\n⚠️ PLC nelze kontaktovat, mapu se nepodařilo znovu načíst.\n\n**Znovu načtěte mapu proměnných** po změně programu v PLC, aby Home Assistant četl a spínal správné proměnné. Entity si ponechají svá ID.\n- **Z PLC** načte mapu uloženou v PLC spolu s programem.\n- **Ze souboru** nahraje soubor `.pub` exportovaný s programem. Použijte, když PLC žádnou mapu neobsahuje, nebo jen starou.\n\n**Intervaly čtení a diagnostika** určují, jak často se z PLC čtou hodnoty a zda se v diagnostice skryjí názvy proměnných.",
         "menu_options": {
           "reimport_plc": "Znovu načíst mapu proměnných z PLC",
           "reimport_file": "Znovu načíst mapu proměnných ze souboru (.pub)",
-          "settings": "Změnit intervaly čtení"
+          "settings": "Intervaly čtení a diagnostika"
         }
       },
       "init_no_map": {
         "title": "EPSNET",
-        "description": "Zdroj: {source} · PLC: {ident} · {points} bodů · CRC {crc}\n\n⚠️ PLC nevrátilo žádnou mapu publikovaných proměnných; ponechána stávající mapa. Načtěte ji raději ze souboru.\n\n**Znovu načtěte mapu proměnných** po změně programu v PLC, aby Home Assistant četl a spínal správné proměnné. Entity si ponechají svá ID.\n- **Z PLC** načte mapu uloženou v PLC spolu s programem.\n- **Ze souboru** nahraje soubor `.pub` exportovaný s programem. Použijte, když PLC žádnou mapu neobsahuje, nebo jen starou.\n\n**Intervaly čtení** určují, jak často se z PLC čtou hodnoty.",
+        "description": "Zdroj: {source} · PLC: {ident} · {points} bodů · CRC {crc}\n\n⚠️ PLC nevrátilo žádnou mapu publikovaných proměnných; ponechána stávající mapa. Načtěte ji raději ze souboru.\n\n**Znovu načtěte mapu proměnných** po změně programu v PLC, aby Home Assistant četl a spínal správné proměnné. Entity si ponechají svá ID.\n- **Z PLC** načte mapu uloženou v PLC spolu s programem.\n- **Ze souboru** nahraje soubor `.pub` exportovaný s programem. Použijte, když PLC žádnou mapu neobsahuje, nebo jen starou.\n\n**Intervaly čtení a diagnostika** určují, jak často se z PLC čtou hodnoty a zda se v diagnostice skryjí názvy proměnných.",
         "menu_options": {
           "reimport_plc": "Znovu načíst mapu proměnných z PLC",
           "reimport_file": "Znovu načíst mapu proměnných ze souboru (.pub)",
-          "settings": "Změnit intervaly čtení"
+          "settings": "Intervaly čtení a diagnostika"
         }
       }
     },

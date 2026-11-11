@@ -116,7 +116,9 @@ language, copy `en.json` to `<language code>.json` and translate the values.
 **Download diagnostics** (on the integration's ⋮ menu) returns the merged catalog: discovered
 modules and their type codes, how they matched the published variables, unsupported modules, the
 raw discovery reads, the full stored variable map (one line per variable, as in the `.pub`) and the
-program checksum the PLC reports. The same catalog (without the raw reads) is also written at startup to
+program checksum the PLC reports. To post the file publicly, turn on *Configure → Polling intervals and diagnostics →
+Hide variable names in diagnostics*: your own words in the names become placeholders (`w1`, `w2`…),
+consistently, so the structure stays readable. The same catalog (without the raw reads) is also written at startup to
 `epsnet/<entry_id>_merged_catalog.yaml` in the Home Assistant config directory.
 
 The integration also exposes diagnostic timing sensors for:

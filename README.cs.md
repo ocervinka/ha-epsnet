@@ -75,6 +75,8 @@ v paměti PLC začínají — bez mapy se proto moduly zobrazí jako zařízení
 o soubor řekne.
 Pokud soubor nemáte po ruce, nastavení může pokračovat i bez mapy (jen moduly), např. abyste
 mohli stáhnout diagnostiku k hlášení chyby.
+Chcete-li soubor s diagnostikou sdílet veřejně, zapněte *Nastavit → Intervaly čtení a diagnostika →
+Skrýt názvy proměnných v diagnostice*: vlastní slova v názvech se nahradí zástupnými `w1`, `w2`…
 
 - **FoxTool** ukládá `.pub` do PLC při každém nahrání programu, takže ho *načtení z PLC* najde.
 - **Mosaic** ho ukládá do složky projektu v počítači, a jen když je v *Project manager → Sw → Export

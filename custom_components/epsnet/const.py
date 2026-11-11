@@ -10,6 +10,8 @@ CONF_SCAN_INTERVAL = "scan_interval"
 # Fast lane: poll binary inputs (buttons, PIRs) this often, independently of the full cycle.
 CONF_FAST_SCAN_INTERVAL = "fast_scan_interval"
 CONF_NAME = "name"
+# Replace the program's own words in variable names in the diagnostics download.
+CONF_ANONYMIZE_DIAGNOSTICS = "anonymize_diagnostics"
 
 # Frozen published-variable map persisted in the config entry (see map_sources.py).
 CONF_MAP = "map"

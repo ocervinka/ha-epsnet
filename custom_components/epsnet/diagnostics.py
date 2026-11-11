@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from .models import (
@@ -296,6 +297,68 @@ def map_snapshot(blob: object) -> dict[str, object]:
     }
 
 
+# Words the entity rules look for (motion / door sensors, lights, outlets) and
+# the generic parts of a name; everything else in a variable name is the
+# program author's own wording (rooms, people) and is replaced.
+_KEEP_SUBSTRINGS = ("pir", "magnet", "light", "plug")
+_KEEP_WORDS = frozenset({"state", "on", "off", "trig", "output", "input", "sw", "dimmer", "analog"})
+_SHORT_CODE = re.compile(r"[A-Za-z]{1,3}\d+[A-Za-z]?")
+_TOKEN = re.compile(r"[A-Za-z0-9]+")
+_NAME_KEYS = frozenset({
+    "entries", "entry_names", "entity_keys", "device_key", "device_name", "registry_keys",
+})
+
+
+def _keep_word(word: str) -> bool:
+    lower = word.lower()
+    return (
+        word.isdigit()
+        or lower in _KEEP_WORDS
+        or any(k in lower for k in _KEEP_SUBSTRINGS)
+        or _SHORT_CODE.fullmatch(word) is not None
+    )
+
+
+def anonymize_names(data: dict[str, object], names: list[str]) -> dict[str, object]:
+    """Replace the program's own words in variable names, consistently everywhere.
+
+    Each word maps to the same placeholder (``w1``, ``w2``…) wherever it occurs,
+    so shared prefixes, ``_ON``/``_OFF`` pairs and device grouping stay visible.
+    Only name-carrying fields and the map lines are rewritten; module data,
+    addresses and raw reads are untouched.
+    """
+    mapping: dict[str, str] = {}
+    for name in names:
+        for word in re.split(r"[^A-Za-z0-9]+", name):
+            if word and not _keep_word(word) and word.lower() not in mapping:
+                mapping[word.lower()] = f"w{len(mapping) + 1}"
+
+    def sub(text: str) -> str:
+        def one(m: re.Match) -> str:
+            word = m.group(0)
+            new = mapping.get(word.lower())
+            if new is None:
+                return word
+            return new.upper() if word.isupper() else new
+        return _TOKEN.sub(one, text)
+
+    def sub_map_line(line: str) -> str:
+        # only the name; zone, storage, type and access stay readable
+        name, sep, rest = line.partition(" ")
+        return sub(name) + sep + rest
+
+    def walk(value: object, key: str | None) -> object:
+        if isinstance(value, dict):
+            return {k: walk(v, k if k in _NAME_KEYS else key) for k, v in value.items()}
+        if isinstance(value, list):
+            return [walk(v, key) for v in value]
+        if key is not None and isinstance(value, str):
+            return sub_map_line(value) if key == "entries" else sub(value)
+        return value
+
+    return walk(data, None)  # type: ignore[return-value]
+
+
 async def _read_program_checksum(client) -> str | None:
     """S 70 (DWORD) holds the program checksum on the PLCs tested so far."""
     from .models import EpsnetPoint
@@ -318,17 +381,27 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict[str, object]:
     Includes the raw discovery reads and the full stored variable map, so a
     report from an untested PLC model is enough to see how its module table
     and its program's variables are laid out. Variable names from the PLC
-    program are included as-is (they are what the entities are built from).
+    program are included as-is (they are what the entities are built from),
+    unless the entry's "anonymize diagnostics" setting is on.
     """
     from homeassistant.loader import async_get_integration
 
-    from .const import CONF_HOST, CONF_LOCAL_PORT, CONF_MAP, CONF_PORT, DEFAULT_LOCAL_PORT, DOMAIN
+    from .const import (
+        CONF_ANONYMIZE_DIAGNOSTICS,
+        CONF_HOST,
+        CONF_LOCAL_PORT,
+        CONF_MAP,
+        CONF_PORT,
+        DEFAULT_LOCAL_PORT,
+        DOMAIN,
+    )
 
     runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if runtime is None:
         return {"error": "integration is not loaded (check the log for the setup error)"}
-    return {
+    data: dict[str, object] = {
         "integration_version": str((await async_get_integration(hass, DOMAIN)).version),
+        "names_anonymized": bool(entry.data.get(CONF_ANONYMIZE_DIAGNOSTICS, False)),
         "home_assistant": {"version": _ha_version()},
         "entity_count": len(runtime.catalog.entities),
         "program_checksum_s70": await _read_program_checksum(runtime.client),
@@ -341,6 +414,10 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict[str, object]:
             map_path=None,
         ),
     }
+    if data["names_anonymized"]:
+        names = [e.name for e in runtime.catalog.entries_by_name.values()]
+        data = anonymize_names(data, names)
+    return data
 
 
 def _ha_version() -> str:

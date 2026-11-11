@@ -19,6 +19,7 @@ from homeassistant.data_entry_flow import FlowResult, FlowResultType
 import voluptuous as vol
 
 from .const import (
+    CONF_ANONYMIZE_DIAGNOSTICS,
     ISSUE_TRACKER_URL,
     CONF_HOST,
     CONF_LOCAL_PORT,
@@ -448,6 +449,7 @@ class EpsnetOptionsFlow(config_entries.OptionsFlow):
                     **entry.data,
                     CONF_SCAN_INTERVAL: int(user_input[CONF_SCAN_INTERVAL]),
                     CONF_FAST_SCAN_INTERVAL: int(user_input.get(CONF_FAST_SCAN_INTERVAL, DEFAULT_FAST_SCAN_INTERVAL)),
+                    CONF_ANONYMIZE_DIAGNOSTICS: bool(user_input.get(CONF_ANONYMIZE_DIAGNOSTICS, False)),
                 },
             )
             self.hass.config_entries.async_schedule_reload(entry.entry_id)
@@ -462,6 +464,10 @@ class EpsnetOptionsFlow(config_entries.OptionsFlow):
                     CONF_FAST_SCAN_INTERVAL,
                     default=entry.data.get(CONF_FAST_SCAN_INTERVAL, DEFAULT_FAST_SCAN_INTERVAL),
                 ): vol.All(vol.Coerce(int), vol.Range(min=0, max=5_000)),
+                vol.Required(
+                    CONF_ANONYMIZE_DIAGNOSTICS,
+                    default=bool(entry.data.get(CONF_ANONYMIZE_DIAGNOSTICS, False)),
+                ): bool,
             }
         )
         return self.async_show_form(step_id="settings", data_schema=schema)

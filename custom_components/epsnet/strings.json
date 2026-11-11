@@ -92,23 +92,25 @@
     "step": {
       "init": {
         "title": "EPSNET",
-        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n**Re-import the variable map** after changing the PLC program, so Home Assistant reads and switches the right variables. Entities keep their IDs.\n- **From the PLC** reads the map stored in the PLC together with the program.\n- **From a file** uploads the `.pub` exported with the program. Use it when the PLC stores no map, or an old one.\n\n**Polling intervals** set how often values are read from the PLC.",
+        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n**Re-import the variable map** after changing the PLC program, so Home Assistant reads and switches the right variables. Entities keep their IDs.\n- **From the PLC** reads the map stored in the PLC together with the program.\n- **From a file** uploads the `.pub` exported with the program. Use it when the PLC stores no map, or an old one.\n\n**Polling intervals and diagnostics** set how often values are read from the PLC, and whether variable names are hidden in the diagnostics download.",
         "menu_options": {
           "reimport_plc": "Re-import the variable map from the PLC",
           "reimport_file": "Re-import the variable map from a file (.pub)",
-          "settings": "Change the polling intervals"
+          "settings": "Polling intervals and diagnostics"
         }
       },
       "settings": {
-        "title": "Polling intervals",
+        "title": "Polling intervals and diagnostics",
         "description": "How often Home Assistant reads values from the PLC. Shorter intervals give faster updates but more network traffic and load on the PLC. Saving reloads the integration.",
         "data": {
           "scan_interval": "Pause between full reads (milliseconds)",
-          "fast_scan_interval": "Fast lane for buttons and motion sensors (milliseconds)"
+          "fast_scan_interval": "Fast lane for buttons and motion sensors (milliseconds)",
+          "anonymize_diagnostics": "Hide variable names in diagnostics"
         },
         "data_description": {
           "scan_interval": "Each cycle reads every value the integration uses (a few hundred values take about half a second), then waits this long before the next one. Default 500; 0 starts the next read immediately.",
-          "fast_scan_interval": "Reads only the on/off inputs (wall buttons, motion sensors, contacts) on their own short cycle, so a quick button press isn't missed between full reads. 0 = off; 100 is recommended (about 10 small requests per second)."
+          "fast_scan_interval": "Reads only the on/off inputs (wall buttons, motion sensors, contacts) on their own short cycle, so a quick button press isn't missed between full reads. 0 = off; 100 is recommended (about 10 small requests per second).",
+          "anonymize_diagnostics": "Replaces the words in your program's variable names (rooms, people…) with placeholders like w1, w2 in ⋮ → Download diagnostics, so you can post the file publicly. The same word always gets the same placeholder, so the file stays useful. Words the integration itself relies on (light, plug, pir, magnet, ON/OFF…) and module codes are kept."
         }
       },
       "reimport_file": {
@@ -120,29 +122,29 @@
       },
       "init_plc_busy": {
         "title": "EPSNET",
-        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ The PLC is busy (its exclusive session is held). Try again.\n\n**Re-import the variable map** after changing the PLC program, so Home Assistant reads and switches the right variables. Entities keep their IDs.\n- **From the PLC** reads the map stored in the PLC together with the program.\n- **From a file** uploads the `.pub` exported with the program. Use it when the PLC stores no map, or an old one.\n\n**Polling intervals** set how often values are read from the PLC.",
+        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ The PLC is busy (its exclusive session is held). Try again.\n\n**Re-import the variable map** after changing the PLC program, so Home Assistant reads and switches the right variables. Entities keep their IDs.\n- **From the PLC** reads the map stored in the PLC together with the program.\n- **From a file** uploads the `.pub` exported with the program. Use it when the PLC stores no map, or an old one.\n\n**Polling intervals and diagnostics** set how often values are read from the PLC, and whether variable names are hidden in the diagnostics download.",
         "menu_options": {
           "reimport_plc": "Re-import the variable map from the PLC",
           "reimport_file": "Re-import the variable map from a file (.pub)",
-          "settings": "Change the polling intervals"
+          "settings": "Polling intervals and diagnostics"
         }
       },
       "init_cannot_connect": {
         "title": "EPSNET",
-        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ Could not reach the PLC to re-import the map.\n\n**Re-import the variable map** after changing the PLC program, so Home Assistant reads and switches the right variables. Entities keep their IDs.\n- **From the PLC** reads the map stored in the PLC together with the program.\n- **From a file** uploads the `.pub` exported with the program. Use it when the PLC stores no map, or an old one.\n\n**Polling intervals** set how often values are read from the PLC.",
+        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ Could not reach the PLC to re-import the map.\n\n**Re-import the variable map** after changing the PLC program, so Home Assistant reads and switches the right variables. Entities keep their IDs.\n- **From the PLC** reads the map stored in the PLC together with the program.\n- **From a file** uploads the `.pub` exported with the program. Use it when the PLC stores no map, or an old one.\n\n**Polling intervals and diagnostics** set how often values are read from the PLC, and whether variable names are hidden in the diagnostics download.",
         "menu_options": {
           "reimport_plc": "Re-import the variable map from the PLC",
           "reimport_file": "Re-import the variable map from a file (.pub)",
-          "settings": "Change the polling intervals"
+          "settings": "Polling intervals and diagnostics"
         }
       },
       "init_no_map": {
         "title": "EPSNET",
-        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ The PLC returned no published-variable map; the current map was kept. Re-import it from a file instead.\n\n**Re-import the variable map** after changing the PLC program, so Home Assistant reads and switches the right variables. Entities keep their IDs.\n- **From the PLC** reads the map stored in the PLC together with the program.\n- **From a file** uploads the `.pub` exported with the program. Use it when the PLC stores no map, or an old one.\n\n**Polling intervals** set how often values are read from the PLC.",
+        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ The PLC returned no published-variable map; the current map was kept. Re-import it from a file instead.\n\n**Re-import the variable map** after changing the PLC program, so Home Assistant reads and switches the right variables. Entities keep their IDs.\n- **From the PLC** reads the map stored in the PLC together with the program.\n- **From a file** uploads the `.pub` exported with the program. Use it when the PLC stores no map, or an old one.\n\n**Polling intervals and diagnostics** set how often values are read from the PLC, and whether variable names are hidden in the diagnostics download.",
         "menu_options": {
           "reimport_plc": "Re-import the variable map from the PLC",
           "reimport_file": "Re-import the variable map from a file (.pub)",
-          "settings": "Change the polling intervals"
+          "settings": "Polling intervals and diagnostics"
         }
       }
     },
