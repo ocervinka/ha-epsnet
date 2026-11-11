@@ -8,6 +8,7 @@ import threading
 import pytest
 
 from custom_components.epsnet.epsnet_udp import (
+    _build_write_inner,
     _ACK,
     _build_discovery_inner,
     _build_discovery_parameter_read,
@@ -229,7 +230,7 @@ async def test_epsnet_udp_client_writes_bool_commands_and_float_values() -> None
 
     assert not server.failures
     assert server.requests == [
-        bytes.fromhex("01000200000f680909680001630c0310540101d916"),
+        bytes.fromhex("01000200000e6808086800016310031054805b16"),
         bytes.fromhex("020002000012680c0c680001630c0381500400002a42b416"),
     ]
 
@@ -565,7 +566,7 @@ async def test_epsnet_udp_client_writes_generic_runtime_points() -> None:
 
     assert not server.failures
     assert server.requests == [
-        bytes.fromhex("01000200000f680909680001630c0310540101d916"),
+        bytes.fromhex("01000200000e6808086800016310031054805b16"),
         bytes.fromhex("020002000012680c0c680001630c0381500400002a42b416"),
     ]
 
@@ -899,3 +900,17 @@ def test_session_opening_requests_never_use_the_poll_port(method, args) -> None:
     with pytest.raises(OSError):
         getattr(client, method)(*args)
     assert calls == [{"ephemeral": True}]
+
+
+def test_bool_writes_touch_only_their_own_bit() -> None:
+    def point(bit: int | None) -> EpsnetPoint:
+        return EpsnetPoint(
+            key="k", name="flag", register="R", storage="B", address=0x1234,
+            bit=bit, data_type="BOOL", writable=True,
+        )
+
+    # bit BOOLs use the one-bit write: set = bit | 0x80, clear = bit
+    assert _build_write_inner(point(5), True)[6:-2] == bytes.fromhex("6310033412" "85")
+    assert _build_write_inner(point(5), False)[6:-2] == bytes.fromhex("6310033412" "05")
+    # a BOOL that owns its whole byte is still written as a byte
+    assert _build_write_inner(point(None), True)[6:-2] == bytes.fromhex("630c03341201" "01")

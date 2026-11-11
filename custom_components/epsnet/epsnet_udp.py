@@ -31,6 +31,9 @@ _WRAPPER_MARKER = b"\x02\x00"
 _ACK = b"\xe5"
 _READ_PREFIX = b"\x6c\x0b"
 _WRITE_PREFIX = b"\x63\x0c"
+# One-bit write: per bit <zone> <address LE> <bit number, | 0x80 to set it>; the other
+# seven bits of the byte are left as they are.
+_WRITE_BIT_PREFIX = b"\x63\x10"
 _READ_RESPONSE_CODE = 0x08
 _WRITE_RESPONSE_CODE = 0x09
 _HELLO_SERVICE = 0x69
@@ -371,6 +374,16 @@ def _build_write_inner(point: PointLike, value: ScalarValue) -> bytes:
         raise EpsnetProtocolError(
             f"Direct short EPSNET write only supports 16-bit addresses: {point.name!r}"
         )
+    if point.value_kind is ValueKind.BOOL and point.bit is not None:
+        if not 0 <= point.bit <= 7:
+            raise EpsnetProtocolError(f"Bit number out of range for {point.name!r}: {point.bit}")
+        data = (
+            _WRITE_BIT_PREFIX
+            + bytes((_zone_code(point),))
+            + point.address.to_bytes(2, byteorder="little")
+            + bytes((point.bit | (0x80 if value else 0),))
+        )
+        return _build_variable_frame(control=0x00, address=0x01, data=data)
     payload = _encode_value(point, value)
     data = (
         _WRITE_PREFIX
