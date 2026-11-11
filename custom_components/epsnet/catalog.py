@@ -535,7 +535,7 @@ def _evaluate_generic_candidate(
     if x_real >= 1 and x_bool >= 1:
         exact_analog = x_bool == 6 and x_real in {2, 3} and x_real_span <= 8
         if exact_analog:
-            return "generic_analog_sensor_module", "C-IT-0200S", True
+            return "generic_analog_sensor_module", "C-IT-0200I", True
         return "generic_analog_sensor_module", "generic_analog_sensor_module", False
 
     if x_real >= 1:

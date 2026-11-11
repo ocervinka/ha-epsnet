@@ -650,7 +650,7 @@ async def test_epsnet_udp_client_discovers_runtime_inventory() -> None:
         _exact_descriptor_body(
             family_word=0x1001,
             runtime_unit_code=0x0CED,
-            text="C-IT-0200S 12H0200 00000030 1136",
+            text="C-IT-0200I 12H0200 00000030 1136",
             trailer_word=0x73AF,
         ),
     ]
@@ -706,7 +706,7 @@ async def test_epsnet_udp_client_discovers_runtime_inventory() -> None:
         "WSB2-40",
         "DA2-22M",
         "SA2-012M",
-        "C-IT-0200S",
+        "C-IT-0200I",
     ]
     assert [device.slot_index for device in inventory.devices] == [0, 1, 2, 3, 4]
     assert [device.child_token for device in inventory.devices] == [
@@ -721,7 +721,7 @@ async def test_epsnet_udp_client_discovers_runtime_inventory() -> None:
         "WSB2-40 11H0100 22395679 1135",
         "DA2-22M 13H0100 14181247 0928",
         "SA2-012M 11H0100 22154270 1126",
-        "C-IT-0200S 12H0200 00000030 1136",
+        "C-IT-0200I 12H0200 00000030 1136",
     ]
     assert inventory.devices[0].exact_descriptor is not None
     assert inventory.devices[0].exact_descriptor.family_word == 0x1001

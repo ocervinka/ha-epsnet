@@ -25,7 +25,7 @@ v upozornění v **Opravách**, takže víte, co chybí.
 - diagnostika a senzory s dobou čtení
 
 Podporované moduly: `SA2-04M`, `SA2-012M`, `DA2-22M`, `WSB2-20`, `WSB2-40`, `IM2-40B`,
-`IM2-140M`, `C-IT-0200S`.
+`IM2-140M`, `C-IT-0200I`.
 
 ## Instalace
 

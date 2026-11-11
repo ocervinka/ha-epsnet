@@ -36,7 +36,7 @@ The integration currently ships runtime profiles for:
 - `WSB2-40`
 - `IM2-40B`
 - `IM2-140M`
-- `C-IT-0200S`
+- `C-IT-0200I`
 
 ## Installation
 

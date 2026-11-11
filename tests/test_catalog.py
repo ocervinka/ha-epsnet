@@ -302,7 +302,7 @@ def test_build_catalog_uses_runtime_models_for_partial_exports() -> None:
 
     analog_device = catalog.devices_by_key["c_it_0200i"]
     assert analog_device.name == "C_IT_0200I"
-    assert analog_device.model == "C-IT-0200S"
+    assert analog_device.model == "C-IT-0200I"
     assert analog_device.entity_keys == ("c_it_0200i_flue",)
 
 
@@ -384,7 +384,7 @@ def test_build_catalog_maps_observed_tecomat_family_to_exact_model() -> None:
 
     device = catalog.devices_by_key["c_it_0200i"]
     assert device.name == "C_IT_0200I"
-    assert device.model == "C-IT-0200S"
+    assert device.model == "C-IT-0200I"
     assert [entity.name for entity in catalog.entities_for_platform("sensor")] == [
         "FLUE",
         "STOVE",

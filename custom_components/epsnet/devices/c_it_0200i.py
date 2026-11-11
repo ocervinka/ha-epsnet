@@ -3,7 +3,7 @@ from ..models import MathFormula, RuntimeChannelDefinition, RuntimeModelInfo
 MODEL_INFO = RuntimeModelInfo(
     unit_code=0x0CED,
     manufacturer="Teco",
-    model="C-IT-0200S",
+    model="C-IT-0200I",
     type_key="generic_analog_sensor_module",
     subsystem="analog_sensors",
     description="Analog temperature and binary input interface",
