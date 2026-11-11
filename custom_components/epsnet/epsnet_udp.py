@@ -783,12 +783,20 @@ class EpsnetUdpClient:
         self._sequence = (self._sequence + 1) & 0xFFFF
         return sequence
 
-    def _open_socket(self) -> socket.socket:
-        """Create and configure a blocking UDP socket for one exchange session."""
+    def _open_socket(self, *, ephemeral: bool = False) -> socket.socket:
+        """Create and configure a blocking UDP socket for one exchange session.
+
+        ``ephemeral=True`` skips the configured local port. Use it for anything
+        that opens the PLC's session (discovery ``6c 01``, parameter/file/login
+        services, the map fetch): the PLC holds that single session for the
+        sender's address and port for as long as packets keep arriving from it,
+        so opening it from the fixed port the poll uses would lock FoxTool, the
+        Firmware Updater and Mosaic out for as long as Home Assistant runs.
+        """
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.settimeout(self._timeout)
-        if self._local_port != 0:
+        if self._local_port != 0 and not ephemeral:
             try:
                 sock.bind(("", self._local_port))
             except OSError as err:
@@ -907,7 +915,7 @@ class EpsnetUdpClient:
                 raise EpsnetError(str(err)) from err
 
     def _read_discovery_block_blocking(self, token: int, length: int) -> bytes:
-        with self._open_socket() as sock:
+        with self._open_socket(ephemeral=True) as sock:
             self._hello_discovery_on_socket(sock)
             return self._read_discovery_block_on_socket(sock, token=token, length=length)
 
@@ -921,7 +929,7 @@ class EpsnetUdpClient:
         payload = username.encode("ascii") + b"\x00" + password.encode("ascii") + b"\x00"
         request = _build_variable_frame(0x00, 0x01, bytes((_LOGIN_SERVICE,)) + payload)
         
-        with self._open_socket() as sock:
+        with self._open_socket(ephemeral=True) as sock:
             self._hello_discovery_on_socket(sock)
             try:
                 response = self._exchange_blocking_on_socket(sock, request)
@@ -937,7 +945,7 @@ class EpsnetUdpClient:
         payload = open_header + filename.encode("ascii") + b"\x00"
         request = _build_variable_frame(0x00, 0x01, payload)
         
-        with self._open_socket() as sock:
+        with self._open_socket(ephemeral=True) as sock:
             self._hello_discovery_on_socket(sock)
             try:
                 response = self._exchange_blocking_on_socket(sock, request)
@@ -999,7 +1007,7 @@ class EpsnetUdpClient:
             return await asyncio.to_thread(self._fetch_pub_blocking)
 
     def _fetch_pub_blocking(self) -> tuple[str, tuple[PubEntry, ...]]:
-        with self._open_socket() as sock:
+        with self._open_socket(ephemeral=True) as sock:
             ident = self._establish_mgmt_with_retry(sock)
             # Seek/init: reply reports the exact project-storage size.
             init_reply = self._exchange_blocking_on_socket(
@@ -1225,7 +1233,7 @@ class EpsnetUdpClient:
             raise last_busy
 
     def _discover_runtime_inventory_blocking(self) -> RuntimeInventory:
-        with self._open_socket() as sock:
+        with self._open_socket(ephemeral=True) as sock:
             self._hello_discovery_on_socket(sock)
 
             identify_response = self._exchange_blocking_on_socket(

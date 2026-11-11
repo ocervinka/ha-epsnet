@@ -866,3 +866,36 @@ async def test_fetch_pub_from_plc_batched_offline() -> None:
     assert got_ident == "D100 CP201MK V7.2"
     assert [e.name for e in entries] == ["light_3"]
     assert client.fetch_progress == (total, total)
+
+
+def test_open_socket_ephemeral_skips_the_configured_local_port() -> None:
+    client = EpsnetUdpClient("127.0.0.1", 9, local_port=16191, timeout=1.0)
+    with client._open_socket() as fixed:
+        assert fixed.getsockname()[1] == 16191
+    with client._open_socket(ephemeral=True) as eph:
+        assert eph.getsockname()[1] != 16191
+
+
+@pytest.mark.parametrize(
+    ("method", "args"),
+    [
+        ("_discover_runtime_inventory_blocking", ()),
+        ("_read_discovery_block_blocking", (0x400F0200, 0x10)),
+        ("_fetch_pub_blocking", ()),
+    ],
+)
+def test_session_opening_requests_never_use_the_poll_port(method, args) -> None:
+    """The PLC keeps its single session for the sender's address and port while
+    packets keep arriving from it; opening it from the poll's fixed port would
+    hold it for as long as Home Assistant polls (locking out FoxTool & co.)."""
+    client = EpsnetUdpClient("127.0.0.1", 9, local_port=16192, timeout=1.0)
+    calls: list[dict] = []
+
+    def fake_open_socket(**kwargs):
+        calls.append(kwargs)
+        raise OSError("stop here")
+
+    client._open_socket = fake_open_socket  # type: ignore[method-assign]
+    with pytest.raises(OSError):
+        getattr(client, method)(*args)
+    assert calls == [{"ephemeral": True}]
