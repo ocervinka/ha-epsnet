@@ -169,10 +169,42 @@ def _resolve_entry_map(entry) -> tuple[tuple[PubEntry, ...], str, str | None]:
     return (), "none", None
 
 
+def _drop_slot_identifiers(hass, entry) -> None:
+    """Remove the CIB-slot identifier from devices that also have a map key.
+
+    Up to 4.1 a device from the variable map carried two identifiers: its map
+    key and the CIB slot it was paired with. The pairing is now exact and can
+    differ from the earlier guess, so a map device keeps only its map key;
+    otherwise its new slot identifier could collide with the device that held
+    that slot before. Entities are keyed by variable name and are unaffected.
+    """
+    from homeassistant.helpers import device_registry as dr
+
+    registry = dr.async_get(hass)
+    slot_prefix = f"{entry.entry_id}_runtime_"
+    for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
+        kept = {
+            identifier
+            for identifier in device.identifiers
+            if not (identifier[0] == DOMAIN and identifier[1].startswith(slot_prefix))
+        }
+        if kept and kept != device.identifiers:
+            registry.async_update_device(device.id, new_identifiers=kept)
+
+
 async def async_migrate_entry(hass, entry) -> bool:
     """Migrate older config entries to the EPSNET-only schema."""
-    if entry.version >= 4:
-        return True
+    if entry.version > 4:
+        return False
+    if entry.version < 4 and not _migrate_to_v4(hass, entry):
+        return False
+    if getattr(entry, "minor_version", 1) < 2:
+        _drop_slot_identifiers(hass, entry)
+        hass.config_entries.async_update_entry(entry, minor_version=2)
+    return True
+
+
+def _migrate_to_v4(hass, entry) -> bool:
     updated_data = dict(entry.data)
     updated_version = entry.version
 

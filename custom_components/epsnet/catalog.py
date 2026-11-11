@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict, Counter
 from dataclasses import dataclass, replace
-from functools import lru_cache
+from functools import cmp_to_key, lru_cache
 import re
 
 from .runtime_registry import RUNTIME_MODEL_INFOS_BY_CODE
@@ -554,18 +554,6 @@ def _detect_devices(
     )
 
 
-def _candidate_anchor(candidate: DetectedDevice) -> int:
-    starts = [
-        address_range.start_address
-        for entry_group in candidate.entry_groups
-        for address_range in entry_group.address_ranges
-        if address_range.register in {"X", "Y"}
-    ]
-    if not starts:
-        return 10**9
-    return min(starts)
-
-
 _GENERIC_CROSS_TYPE_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
     {
         ("generic_analog_sensor_module", "generic_room_controller"),
@@ -592,70 +580,6 @@ def _is_runtime_candidate_compatible(
     return False
 
 
-def _address_overlap(
-    span_start: int, span_end: int, start_address: int, end_address: int
-) -> int:
-    return max(0, min(span_end, end_address + 1) - max(span_start, start_address))
-
-
-def _runtime_overlap(
-    candidate: DetectedDevice, runtime_range: tuple[int, int, int, int]
-) -> tuple[int, int, int]:
-    xs, xe, ys, ye = runtime_range
-    x_overlap = 0
-    y_overlap = 0
-    for entry_group in candidate.entry_groups:
-        for address_range in entry_group.address_ranges:
-            if address_range.register == "X":
-                x_overlap += _address_overlap(
-                    xs, xe, address_range.start_address, address_range.end_address
-                )
-            elif address_range.register == "Y":
-                y_overlap += _address_overlap(
-                    ys, ye, address_range.start_address, address_range.end_address
-                )
-    return x_overlap + y_overlap, x_overlap, y_overlap
-
-
-def _runtime_match_sort_key(
-    candidate: DetectedDevice, runtime_device: RuntimeDiscoveredDevice
-) -> tuple[int, int, int]:
-    return (
-        1 if candidate.model == runtime_device.model else 0,
-        -_candidate_anchor(candidate),
-        len(candidate.entry_names),
-    )
-
-
-def _runtime_overlap_sort_key(
-    candidate: DetectedDevice,
-    runtime_device: RuntimeDiscoveredDevice,
-    overlap: tuple[int, int, int],
-) -> tuple[int, int, int, int, int, int]:
-    total_overlap, x_overlap, y_overlap = overlap
-    return (
-        total_overlap,
-        x_overlap,
-        y_overlap,
-        1 if candidate.model == runtime_device.model else 0,
-        -_candidate_anchor(candidate),
-        len(candidate.entry_names),
-    )
-
-
-def _candidate_overlaps_later_runtime(
-    candidate: DetectedDevice,
-    later_runtime_devices: list[RuntimeDiscoveredDevice],
-    runtime_ranges: dict[str, tuple[int, int, int, int]],
-) -> bool:
-    for runtime_device in later_runtime_devices:
-        if not _is_runtime_candidate_compatible(candidate, runtime_device):
-            continue
-        if _runtime_overlap(candidate, runtime_ranges[runtime_device.registry_key])[0] > 0:
-            return True
-    return False
-
-
 def _merge_runtime_metadata(
     candidate: DetectedDevice, runtime_device: RuntimeDiscoveredDevice
 ) -> DetectedDevice:
@@ -675,6 +599,44 @@ def _merge_runtime_metadata(
     )
 
 
+def _image_starts(candidate: DetectedDevice) -> tuple[int | None, int | None]:
+    """Return the candidate's first X and first Y address (``None`` if absent)."""
+    starts: dict[str, list[int]] = {"X": [], "Y": []}
+    for entry_group in candidate.entry_groups:
+        for address_range in entry_group.address_ranges:
+            if address_range.register in starts:
+                starts[address_range.register].append(address_range.start_address)
+    return (
+        min(starts["X"]) if starts["X"] else None,
+        min(starts["Y"]) if starts["Y"] else None,
+    )
+
+
+def _compare_image_order(a: DetectedDevice, b: DetectedDevice) -> int:
+    """Order two map devices by where they sit in the X/Y images.
+
+    Compare on X when both have inputs, else on Y when both have outputs, else
+    on whatever address each has; ties fall back to the key for determinism.
+    """
+    (ax, ay), (bx, by) = _image_starts(a), _image_starts(b)
+    if ax is not None and bx is not None and ax != bx:
+        return -1 if ax < bx else 1
+    if ay is not None and by is not None and ay != by:
+        return -1 if ay < by else 1
+    a_any = min(v for v in (ax, ay, 10**9) if v is not None)
+    b_any = min(v for v in (bx, by, 10**9) if v is not None)
+    if a_any != b_any:
+        return -1 if a_any < b_any else 1
+    return (a.key > b.key) - (a.key < b.key)
+
+
+def _program_order_key(device: RuntimeDiscoveredDevice) -> tuple[int, ...]:
+    position = device.program_position
+    if position is not None:
+        return (0, position)
+    return (1, device.group_token, device.runtime_index, device.slot_index)
+
+
 def _match_runtime_inventory(
     devices_by_key: dict[str, DetectedDevice],
     runtime_inventory: RuntimeInventory,
@@ -683,72 +645,32 @@ def _match_runtime_inventory(
     tuple[RuntimeDiscoveredDevice, ...],
     tuple[DetectedDevice, ...],
 ]:
-    # --- DETERMINISTIC ADDRESS-BASED HANDSHAKE ---
-    devices_by_group = defaultdict(list)
-    for d in runtime_inventory.devices: devices_by_group[d.group_token].append(d)
-    
-    dev_ranges = {}
-    for group in runtime_inventory.groups:
-        cx, cy = 0, 0
-        for d in sorted(devices_by_group[group.token], key=lambda x: x.runtime_index):
-            dev_ranges[d.registry_key] = (cx, cx + d.model_info.input_size, cy, cy + d.model_info.output_size)
-            cx += d.model_info.input_size
-            cy += d.model_info.output_size
+    """Pair map devices with the physical modules found on the bus.
 
+    The PLC lays its modules' data out in the X/Y images in the order of the
+    program's hardware list, and discovery reports each module's position in
+    that list. So walking the modules in program order and giving each one the
+    earliest (by image address) still-unpaired compatible map device pairs
+    same-model modules exactly, without knowing where the CIB data starts or
+    how large each module is.
+    """
     matched: dict[str, DetectedDevice] = {}
     available = dict(sorted(devices_by_key.items()))
     unmatched_runtime: list[RuntimeDiscoveredDevice] = []
 
-    sorted_runtime = sorted(runtime_inventory.devices, key=lambda device: (device.group_token, device.runtime_index, device.slot_index))
-
-    for runtime_index, runtime_device in enumerate(sorted_runtime):
-        runtime_range = dev_ranges[runtime_device.registry_key]
-        compatible_candidates = [
-            (candidate_key, candidate)
-            for candidate_key, candidate in available.items()
+    for runtime_device in sorted(runtime_inventory.devices, key=_program_order_key):
+        candidates = [
+            candidate
+            for candidate in available.values()
             if _is_runtime_candidate_compatible(candidate, runtime_device)
         ]
-
-        overlap_candidates = [
-            (candidate_key, candidate, overlap)
-            for candidate_key, candidate in compatible_candidates
-            if (overlap := _runtime_overlap(candidate, runtime_range))[0] > 0
-        ]
-        if overlap_candidates:
-            best_candidate_key, _, _ = max(
-                overlap_candidates,
-                key=lambda item: _runtime_overlap_sort_key(
-                    item[1], runtime_device, item[2]
-                ),
-            )
-            matched[best_candidate_key] = _merge_runtime_metadata(
-                available.pop(best_candidate_key), runtime_device
-            )
-            continue
-
-        later_runtime_devices = sorted_runtime[runtime_index + 1 :]
-        ready_candidates: list[tuple[str, DetectedDevice]] = []
-        reserved_candidates: list[tuple[str, DetectedDevice]] = []
-        for candidate_key, candidate in compatible_candidates:
-            target = reserved_candidates
-            if not _candidate_overlaps_later_runtime(
-                candidate, later_runtime_devices, dev_ranges
-            ):
-                target = ready_candidates
-            target.append((candidate_key, candidate))
-
-        heuristic_candidates = ready_candidates or reserved_candidates
-        if not heuristic_candidates:
+        if not candidates:
             unmatched_runtime.append(runtime_device)
             continue
-
-        # Keep concrete overlap candidates available for later slots whenever possible.
-        best_candidate_key, _ = max(
-            heuristic_candidates,
-            key=lambda item: _runtime_match_sort_key(item[1], runtime_device),
-        )
-        matched[best_candidate_key] = _merge_runtime_metadata(
-            available.pop(best_candidate_key), runtime_device
+        exact = [c for c in candidates if c.model == runtime_device.model]
+        best = min(exact or candidates, key=cmp_to_key(_compare_image_order))
+        matched[best.key] = _merge_runtime_metadata(
+            available.pop(best.key), runtime_device
         )
 
     unmatched_pub = tuple(sorted(available.values(), key=lambda d: d.key))

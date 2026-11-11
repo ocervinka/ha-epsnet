@@ -321,6 +321,22 @@ class RuntimeDiscoveredDevice:
     exact_descriptor: RuntimeExactDescriptor | None = None
 
     @property
+    def program_position(self) -> int | None:
+        """Return the module's position in the PLC program's hardware list.
+
+        Read from the child record (little-endian word at +0x3e). The PLC lays
+        the modules' data out in the X/Y images in this order -- not in CIB slot
+        or runtime-index order -- so it is what pairs same-model modules with
+        the published variables. ``None`` if the record was not read.
+        """
+        if not self.child_record_hex:
+            return None
+        record = bytes.fromhex(self.child_record_hex)
+        if len(record) < 0x40:
+            return None
+        return int.from_bytes(record[0x3E:0x40], "little")
+
+    @property
     def manufacturer(self) -> str:
         """Return the resolved manufacturer label."""
         return self.model_info.manufacturer
@@ -434,10 +450,14 @@ class DetectedDevice:
 
     @property
     def registry_keys(self) -> tuple[str, ...]:
-        """Return the stable identifiers for the Home Assistant device registry."""
-        if self.discovery_source == "epsnet_runtime_only":
-            return (self.key,)
-        return (self.runtime_registry_key, self.key)
+        """Return the stable identifiers for the Home Assistant device registry.
+
+        A device from the variable map is identified by its map key only: which
+        CIB slot it pairs with is derived, and must not change its identity.
+        Modules not in the map are identified by their slot (``key`` is the
+        runtime registry key for them).
+        """
+        return (self.key,)
 
     @property
     def runtime_registry_key(self) -> str:

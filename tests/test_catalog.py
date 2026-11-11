@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from custom_components.epsnet.catalog import _match_runtime_inventory, build_catalog
@@ -408,52 +409,85 @@ def test_build_catalog_ignores_undiscovered_pub_clusters() -> None:
     )
 
 
-def test_match_runtime_inventory_prefers_compatible_candidates_and_reserves_future_overlaps() -> None:
-    runtime_inventory = _make_runtime_inventory([0x0C36, 0x0C36, 0x0C36])
-    matched, unmatched_runtime, unmatched_pub = _match_runtime_inventory(
-        {
-            "output_a_overlap": _make_detected_device(
-                "output_a_overlap",
-                type_key="generic_relay_module",
-                model="SA2-012M",
-                subsystem="relay_outputs",
-                start_address=0,
-                end_address=4,
-            ),
-            "sw_a_future": _make_detected_device(
-                "sw_a_future",
-                type_key="generic_room_controller",
-                model="WSB2-40",
-                subsystem="room_controls",
-                start_address=11,
-                end_address=14,
-            ),
-            "sw_b_fallback": _make_detected_device(
-                "sw_b_fallback",
-                type_key="generic_room_controller",
-                model="WSB2-40",
-                subsystem="room_controls",
-                start_address=20,
-                end_address=24,
-            ),
-            "sw_z_current": _make_detected_device(
-                "sw_z_current",
-                type_key="generic_room_controller",
-                model="WSB2-40",
-                subsystem="room_controls",
-                start_address=0,
-                end_address=4,
-            ),
-        },
-        runtime_inventory,
+def _with_program_positions(
+    inventory: RuntimeInventory, positions: list[int]
+) -> RuntimeInventory:
+    """Give each runtime device a child record carrying its program position."""
+
+    def record(position: int) -> str:
+        return (bytes(0x3E) + position.to_bytes(2, "little") + bytes(0x66 - 0x40)).hex()
+
+    devices = tuple(
+        replace(device, child_record_hex=record(position))
+        for device, position in zip(inventory.devices, positions, strict=True)
+    )
+    return replace(
+        inventory,
+        devices=devices,
+        groups=tuple(replace(group, devices=devices) for group in inventory.groups),
     )
 
-    assert set(matched) == {"sw_a_future", "sw_b_fallback", "sw_z_current"}
-    assert matched["sw_z_current"].runtime_slot_index == 0
-    assert matched["sw_b_fallback"].runtime_slot_index == 1
-    assert matched["sw_a_future"].runtime_slot_index == 2
+
+def _wsb(key: str, start: int) -> DetectedDevice:
+    return _make_detected_device(
+        key,
+        type_key="generic_room_controller",
+        model="WSB2-40",
+        subsystem="room_controls",
+        start_address=start,
+        end_address=start + 4,
+    )
+
+
+def test_match_pairs_same_model_modules_in_program_order() -> None:
+    # Three WSB2-40 in CIB slots 0, 1, 2; the program lists them as 3rd, 1st, 2nd.
+    # The image is laid out in program order, so the map device with the lowest
+    # address belongs to the module the program lists first (slot 1).
+    inventory = _with_program_positions(
+        _make_runtime_inventory([0x0C36, 0x0C36, 0x0C36]), [12, 10, 11]
+    )
+    matched, unmatched_runtime, unmatched_pub = _match_runtime_inventory(
+        {"sw_hall": _wsb("sw_hall", 4), "sw_bed": _wsb("sw_bed", 9), "sw_bath": _wsb("sw_bath", 14)},
+        inventory,
+    )
+
+    assert matched["sw_hall"].runtime_slot_index == 1
+    assert matched["sw_bed"].runtime_slot_index == 2
+    assert matched["sw_bath"].runtime_slot_index == 0
     assert unmatched_runtime == ()
-    assert tuple(device.key for device in unmatched_pub) == ("output_a_overlap",)
+    assert unmatched_pub == ()
+
+
+def test_match_ignores_incompatible_models_and_reports_leftovers() -> None:
+    inventory = _with_program_positions(
+        _make_runtime_inventory([0x0C36, 0x0C36]), [7, 6]
+    )
+    relay = _make_detected_device(
+        "relay_a",
+        type_key="generic_relay_module",
+        model="SA2-012M",
+        subsystem="relay_outputs",
+        start_address=0,
+        end_address=1,
+    )
+    matched, unmatched_runtime, unmatched_pub = _match_runtime_inventory(
+        {"relay_a": relay, "sw_only": _wsb("sw_only", 20)}, inventory
+    )
+
+    assert set(matched) == {"sw_only"}
+    assert matched["sw_only"].runtime_slot_index == 1  # program position 6 comes first
+    assert [device.slot_index for device in unmatched_runtime] == [0]
+    assert tuple(device.key for device in unmatched_pub) == ("relay_a",)
+
+
+def test_match_without_program_positions_falls_back_to_runtime_order() -> None:
+    matched, _, _ = _match_runtime_inventory(
+        {"sw_b": _wsb("sw_b", 30), "sw_a": _wsb("sw_a", 4)},
+        _make_runtime_inventory([0x0C36, 0x0C36]),
+    )
+
+    assert matched["sw_a"].runtime_slot_index == 0
+    assert matched["sw_b"].runtime_slot_index == 1
 
 
 def test_build_catalog_supports_runtime_only_mode_without_pub_entries() -> None:

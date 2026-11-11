@@ -603,10 +603,14 @@ async def test_migrate_entry_converts_seconds_to_milliseconds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     init_module = _load_init_module(monkeypatch)
+    monkeypatch.setattr(init_module, "_drop_slot_identifiers", lambda hass, entry: None)
     updates: list[dict[str, object]] = []
 
     class _ConfigEntriesManager:
-        def async_update_entry(self, entry, *, data, version) -> None:
+        def async_update_entry(self, entry, *, data=None, version=None, minor_version=None) -> None:
+            if minor_version is not None:
+                entry.minor_version = minor_version
+                return
             entry.data = data
             entry.version = version
             updates.append({"data": data, "version": version})
@@ -635,9 +639,13 @@ async def test_migrate_entry_preserves_zero_scan_interval(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     init_module = _load_init_module(monkeypatch)
+    monkeypatch.setattr(init_module, "_drop_slot_identifiers", lambda hass, entry: None)
 
     class _ConfigEntriesManager:
-        def async_update_entry(self, entry, *, data, version) -> None:
+        def async_update_entry(self, entry, *, data=None, version=None, minor_version=None) -> None:
+            if minor_version is not None:
+                entry.minor_version = minor_version
+                return
             entry.data = data
             entry.version = version
 
@@ -664,9 +672,13 @@ async def test_migrate_entry_uses_legacy_default_when_scan_interval_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     init_module = _load_init_module(monkeypatch)
+    monkeypatch.setattr(init_module, "_drop_slot_identifiers", lambda hass, entry: None)
 
     class _ConfigEntriesManager:
-        def async_update_entry(self, entry, *, data, version) -> None:
+        def async_update_entry(self, entry, *, data=None, version=None, minor_version=None) -> None:
+            if minor_version is not None:
+                entry.minor_version = minor_version
+                return
             entry.data = data
             entry.version = version
 

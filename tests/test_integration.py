@@ -259,3 +259,37 @@ async def test_unsupported_modules_are_reported_not_created(
         catalog = diag["catalog"]
         assert catalog["raw_reads"] == {"root": "00ff"}
         assert [d["runtime_type_code"] for d in catalog["unsupported_runtime_devices"]] == ["0x0d31"]
+
+
+async def test_migration_drops_slot_identifiers_from_map_devices(hass: HomeAssistant) -> None:
+    """4.1 -> 4.2: map devices keep only their map key; slot-only devices are kept."""
+    from homeassistant.helpers import device_registry as dr
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN, version=4, minor_version=1, title="EPSNET",
+        data={"name": "EPSNET", "host": "127.0.0.1", "port": 61682,
+              "local_port": 61681, "scan_interval": 500},
+    )
+    entry.add_to_hass(hass)
+    registry = dr.async_get(hass)
+    map_device = registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, f"{entry.entry_id}_runtime_40015382_04"),
+                     (DOMAIN, f"{entry.entry_id}_sw_room_a")},
+    )
+    slot_device = registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, f"{entry.entry_id}_runtime_40015382_09")},
+    )
+
+    from custom_components.epsnet import async_migrate_entry
+
+    assert await async_migrate_entry(hass, entry)
+    assert entry.minor_version == 2
+    assert registry.async_get(map_device.id).identifiers == {
+        (DOMAIN, f"{entry.entry_id}_sw_room_a")
+    }
+    assert registry.async_get(slot_device.id).identifiers == {
+        (DOMAIN, f"{entry.entry_id}_runtime_40015382_09")
+    }

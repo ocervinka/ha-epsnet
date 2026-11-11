@@ -127,10 +127,7 @@ def test_build_catalog_snapshot_includes_pub_role_counts_and_ranges() -> None:
     assert snapshot["unmatched_pub_devices"] == []
 
     assert room_snapshot["device_key"] == "sw_room_b_panel"
-    assert room_snapshot["registry_keys"] == [
-        "runtime_40015382_00",
-        "sw_room_b_panel",
-    ]
+    assert room_snapshot["registry_keys"] == ["sw_room_b_panel"]
     assert room_snapshot["role_entry_counts"] == {
         "r_bool": 4,
         "r_cmd_off": 4,
