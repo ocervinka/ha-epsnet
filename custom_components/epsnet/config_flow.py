@@ -35,6 +35,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     SOURCE_DISCOVER,
+    SOURCE_INVENTORY_ONLY,
     SOURCE_UPLOAD,
 )
 from .epsnet_udp import EpsnetError, EpsnetUdpClient, PlcBusyError
@@ -176,10 +177,12 @@ class EpsnetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # from the translations, not from English text built here.
         step_id = f"source_{self._error}" if self._error else "source"
         self._error = None
-        return self.async_show_menu(
-            step_id=step_id,
-            menu_options=[SOURCE_DISCOVER, SOURCE_UPLOAD],
-        )
+        options = [SOURCE_DISCOVER, SOURCE_UPLOAD]
+        if step_id == "source_no_map" and self._result is not None:
+            # The scan worked but found no map: allow an entry with the modules
+            # only (no entities), so diagnostics can still be downloaded.
+            options.append(SOURCE_INVENTORY_ONLY)
+        return self.async_show_menu(step_id=step_id, menu_options=options)
 
     # Re-entry points for the warning variants: Home Assistant re-calls the
     # handler named by the shown step id (e.g. when the frontend reloads the
@@ -201,6 +204,14 @@ class EpsnetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         self._error = "no_map"
         return await self.async_step_source()
+
+    async def async_step_inventory_only(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """No-map menu -> create the entry with the scanned modules only."""
+        if self._result is None:
+            return await self.async_step_source()
+        return await self.async_step_confirm()
 
     async def async_step_discover(
         self, user_input: dict[str, Any] | None = None

@@ -73,6 +73,8 @@ Integrace z ní čte hodnoty a přes ni spíná (proměnné programu `_ON` / `_O
 PLC zjistí, které moduly jsou připojené, v jakém pořadí a jak velké, ale ne, kde jejich data
 v paměti PLC začínají — bez mapy se proto moduly zobrazí jako zařízení bez entit a nastavení si
 o soubor řekne.
+Pokud soubor nemáte po ruce, nastavení může pokračovat i bez mapy (jen moduly), např. abyste
+mohli stáhnout diagnostiku k hlášení chyby.
 
 - **FoxTool** ukládá `.pub` do PLC při každém nahrání programu, takže ho *načtení z PLC* najde.
 - **Mosaic** ho ukládá do složky projektu v počítači, a jen když je v *Project manager → Sw → Export

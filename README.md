@@ -84,6 +84,8 @@ addresses in the PLC. It is what the integration reads values from and switches 
 program's `_ON` / `_OFF` command variables). Discovery alone finds which modules are installed, in
 which order and how large they are, but not where their data starts in the PLC's memory — so
 without a map the modules are listed as devices with no entities, and setup asks for the file.
+If you don't have it at hand, setup can also continue without a map (modules only), e.g. to
+download diagnostics for a bug report.
 
 - **FoxTool** stores the `.pub` in the PLC when it loads the program, so *discover from the
   PLC* finds it.
@@ -112,8 +114,9 @@ language, copy `en.json` to `<language code>.json` and translate the values.
 ## Diagnostics and performance
 
 **Download diagnostics** (on the integration's ⋮ menu) returns the merged catalog: discovered
-modules and their type codes, how they matched the published variables, unsupported modules, and the
-raw discovery reads. The same catalog (without the raw reads) is also written at startup to
+modules and their type codes, how they matched the published variables, unsupported modules, the
+raw discovery reads, the full stored variable map (one line per variable, as in the `.pub`) and the
+program checksum the PLC reports. The same catalog (without the raw reads) is also written at startup to
 `epsnet/<entry_id>_merged_catalog.yaml` in the Home Assistant config directory.
 
 The integration also exposes diagnostic timing sensors for:

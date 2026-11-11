@@ -65,10 +65,11 @@
       },
       "source_no_map": {
         "title": "Zdroj mapy premenných",
-        "description": "Načítajte mapu publikovaných premenných priamo z PLC (odporúčané), alebo nahrajte exportovaný súbor .pub.\n\n⚠️ V PLC nie je uložená mapa publikovaných premenných (nie je v ňom súbor .pub — napr. program nahraný z Mosaicu). Nahrajte namiesto toho súbor .pub z vášho projektu; v Mosaicu v Project manager → Sw → Export files zapnite Assembler (.pub) a program preložte.",
+        "description": "Načítajte mapu publikovaných premenných priamo z PLC (odporúčané), alebo nahrajte exportovaný súbor .pub.\n\n⚠️ V PLC nie je uložená mapa publikovaných premenných (nie je v ňom súbor .pub — napr. program nahraný z Mosaicu). Nahrajte namiesto toho súbor .pub z vášho projektu; v Mosaicu v Project manager → Sw → Export files zapnite Assembler (.pub) a program preložte. Ak súbor .pub nemáte po ruke, môžete pokračovať bez mapy: moduly sa zobrazia bez entít a ⋮ → Stiahnuť diagnostiku funguje.",
         "menu_options": {
           "discover": "Načítať z PLC (odporúčané)",
-          "upload": "Nahrať súbor .pub"
+          "upload": "Nahrať súbor .pub",
+          "inventory_only": "Pokračovať bez mapy (len moduly, bez entít)"
         }
       }
     },

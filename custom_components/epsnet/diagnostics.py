@@ -276,16 +276,53 @@ def write_catalog_snapshot(path: Path, snapshot: dict[str, object]) -> None:
     path.write_text("\n".join(_yaml_lines(snapshot)) + "\n", encoding="utf-8")
 
 
+def map_snapshot(blob: object) -> dict[str, object]:
+    """The stored variable map, one .pub-style line per variable."""
+    if not isinstance(blob, dict) or blob.get("entries") is None:
+        return {"source": "none", "entry_count": 0, "entries": []}
+    lines = []
+    for e in blob["entries"]:
+        bit = f" .{e['bit']}" if e.get("bit") is not None else ""
+        lines.append(
+            f"{e['name']} {e['register']} {e['storage']} {e['address']}{bit} "
+            f"{e['data_type']} {e.get('access') or ''}".rstrip()
+        )
+    return {
+        "source": blob.get("source"),
+        "plc_ident": blob.get("plc_ident"),
+        "crc": _hex32(int(blob.get("crc") or 0)),
+        "entry_count": len(lines),
+        "entries": lines,
+    }
+
+
+async def _read_program_checksum(client) -> str | None:
+    """S 70 (DWORD) holds the program checksum on the PLCs tested so far."""
+    from .models import EpsnetPoint
+
+    point = EpsnetPoint(
+        key="s70", name="S70", register="S", storage="D", address=70,
+        bit=None, data_type="UDINT",
+    )
+    try:
+        values = await client.get_point_values((point,))
+    except Exception:  # diagnostics must never fail on a read
+        return None
+    value = values.get(point.key)
+    return None if value is None else _hex32(int(value))
+
+
 async def async_get_config_entry_diagnostics(hass, entry) -> dict[str, object]:
     """Home Assistant "Download diagnostics": the merged-catalog snapshot.
 
-    Includes the raw discovery reads so a report from an untested PLC model is
-    enough to see how its module table differs. Variable names from the PLC
+    Includes the raw discovery reads and the full stored variable map, so a
+    report from an untested PLC model is enough to see how its module table
+    and its program's variables are laid out. Variable names from the PLC
     program are included as-is (they are what the entities are built from).
     """
     from homeassistant.loader import async_get_integration
 
-    from .const import CONF_HOST, CONF_LOCAL_PORT, CONF_PORT, DEFAULT_LOCAL_PORT, DOMAIN
+    from .const import CONF_HOST, CONF_LOCAL_PORT, CONF_MAP, CONF_PORT, DEFAULT_LOCAL_PORT, DOMAIN
 
     runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if runtime is None:
@@ -294,6 +331,8 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict[str, object]:
         "integration_version": str((await async_get_integration(hass, DOMAIN)).version),
         "home_assistant": {"version": _ha_version()},
         "entity_count": len(runtime.catalog.entities),
+        "program_checksum_s70": await _read_program_checksum(runtime.client),
+        "map": map_snapshot(entry.data.get(CONF_MAP)),
         "catalog": build_catalog_snapshot(
             runtime.catalog,
             host=str(entry.data.get(CONF_HOST)),

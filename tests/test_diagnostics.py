@@ -227,3 +227,19 @@ def test_build_catalog_snapshot_marks_runtime_only_mode_without_pub() -> None:
     assert snapshot["groups"][0]["devices"][0]["pub_match"] is None
     assert snapshot["unmatched_pub_devices"] == []
     assert snapshot["unmatched_runtime_devices"][0]["model"] == "WSB2-40"
+
+
+def test_map_snapshot_lists_every_variable_like_a_pub_line() -> None:
+    from custom_components.epsnet.diagnostics import map_snapshot
+    from custom_components.epsnet.map_sources import entries_crc, serialize_entries
+
+    entries = parse_pub_text(
+        "lamp_a_ON R B 100 .0 BOOL PUB_INOUT\nroom_temp X F 71 REAL PUB_INOUT\n"
+    )
+    blob = {"source": "file", "plc_ident": None, "crc": entries_crc(entries),
+            "entries": serialize_entries(entries)}
+    snap = map_snapshot(blob)
+    assert snap["source"] == "file"
+    assert snap["entry_count"] == 2
+    assert snap["entries"] == ["lamp_a_ON R B 100 .0 BOOL PUB_INOUT", "room_temp X F 71 REAL PUB_INOUT"]
+    assert map_snapshot(None) == {"source": "none", "entry_count": 0, "entries": []}

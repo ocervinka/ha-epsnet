@@ -19,6 +19,8 @@ CONF_MAP_FILE = "map_file"
 # Config-flow source-menu choices.
 SOURCE_DISCOVER = "discover"
 SOURCE_UPLOAD = "upload"
+# Offered only after a scan found no map: create the entry with the modules alone.
+SOURCE_INVENTORY_ONLY = "inventory_only"
 
 DEFAULT_NAME = "EPSNET"
 DEFAULT_PORT = 61682

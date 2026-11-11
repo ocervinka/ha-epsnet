@@ -65,10 +65,11 @@
       },
       "source_no_map": {
         "title": "Choose the variable map source",
-        "description": "Discover the published-variable map straight from the PLC (recommended), or upload an exported .pub file.\n\n⚠️ The PLC holds no published-variable map (no .pub was stored in it — e.g. a program loaded from Mosaic). Upload the .pub file from your project instead; in Mosaic, enable it under Project manager → Sw → Export files → Assembler (.pub) and rebuild.",
+        "description": "Discover the published-variable map straight from the PLC (recommended), or upload an exported .pub file.\n\n⚠️ The PLC holds no published-variable map (no .pub was stored in it — e.g. a program loaded from Mosaic). Upload the .pub file from your project instead; in Mosaic, enable it under Project manager → Sw → Export files → Assembler (.pub) and rebuild. If you don't have the .pub at hand, you can continue without a map: the modules are listed without entities and ⋮ → Download diagnostics works.",
         "menu_options": {
           "discover": "Discover from the PLC (recommended)",
-          "upload": "Upload a .pub file"
+          "upload": "Upload a .pub file",
+          "inventory_only": "Continue without a map (modules only, no entities)"
         }
       }
     },
