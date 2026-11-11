@@ -405,9 +405,9 @@ def _max_address_span_for_role(
 def _collect_generic_raw_roles(
     entries_by_name: dict[str, PubEntry],
 ) -> dict[str, dict[str, list[PubEntry]]]:
-    """Bucket every entry into (stem, role) using only Mosaic/Foxtrot conventions.
+    """Bucket every entry into (stem, role) using only the PLC toolchain's naming conventions.
 
-    Y-register entries with the Mosaic-generated `state_` prefix have that
+    Y-register entries with the generated `state_` prefix have that
     prefix stripped to form the stem. R-register BOOL entries with
     `_ON`/`_OFF`/`_TRIG` suffixes (Foxtrot command triplet) have the suffix
     stripped. No user-chosen name prefixes (OUTPUT_/INPUT_/SW_/DIMMER_/...) are
@@ -870,9 +870,9 @@ def build_catalog(
     Runtime inventory is the identity source (what hardware exists); the `.pub`
     export is the address source (where each channel sits in X/Y/R RAM). The
     two are joined by name-stem clustering: entries that share a common
-    underscore prefix after stripping Mosaic's auto-generated `state_` prefix
-    and `_ON/_OFF/_TRIG` command suffixes are attributed to one logical
-    device, then matched against a runtime device by profile shape.
+    underscore prefix after stripping the generated `state_` prefix and
+    `_ON/_OFF/_TRIG` command suffixes are attributed to one logical device,
+    then paired with the modules in program order (`_match_runtime_inventory`).
     """
     entries_by_name = {entry.name: entry for entry in entries}
     # Modules with an unknown type code have no channel layout, so they can

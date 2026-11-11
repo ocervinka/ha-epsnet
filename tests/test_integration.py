@@ -296,7 +296,7 @@ async def test_migration_drops_slot_identifiers_from_map_devices(hass: HomeAssis
 
 
 async def test_discover_without_a_map_asks_for_the_pub_file(hass: HomeAssistant) -> None:
-    """A PLC with no stored .pub (e.g. a Mosaic program) must not create an entry."""
+    """A PLC with no stored .pub must not create an entry."""
 
     async def _inventory(*_a, **_k):
         await asyncio.sleep(0)

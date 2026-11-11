@@ -237,7 +237,7 @@ def _migrate_to_v4(hass, entry) -> bool:
         legacy_transport = updated_data.get("transport")
         if legacy_transport not in {None, "epsnet"}:
             LOGGER.error(
-                "EPSNET config entry %s still uses the removed PLCComS transport; "
+                "EPSNET config entry %s still uses the removed gateway transport; "
                 "re-create it with direct EPSNET settings.",
                 entry.entry_id,
             )

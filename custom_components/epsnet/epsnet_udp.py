@@ -51,20 +51,20 @@ _DISCOVERY_CHILD_RECORD_LENGTH = 0x66
 _DISCOVERY_DESCRIPTOR_POINTER_OFFSET = 0x46
 
 # ---- on-PLC .pub fetch (6c 23 project-storage block read) ----
-# Established by capturing FoxTool: HELLO(0x7d) -> 6c 01 (identify/establish) ->
+# Sequence: HELLO(0x7d) -> 6c 01 (identify/establish) ->
 # 6c 23 walk of the project storage. Runtime reads are non-exclusive; only this
 # management session is exclusive (see PlcBusyError).
 _MGMT_ADDRESS = 0x7D  # management/updater station (vs 0x01 for runtime reads)
 _ESTABLISH_SERVICE = 0x01  # 6c 01 after HELLO -> establishes the session, returns ident
 _STORAGE_SERVICE = 0x23  # 6c 23 project-storage read
-_STORAGE_AREA = 0x10  # storage area/bank byte used by FoxTool
+_STORAGE_AREA = 0x10  # project-storage area/bank byte
 _STORAGE_INIT_LEN = 0x40  # length byte on the seek/init frame
 _STORAGE_BLOCK_LEN = 0xC8  # 200-byte data blocks
 _STORAGE_MAX_BYTES = 0x80000  # 512 KiB safety cap on the walk
 _STORAGE_END_RUNS = 4  # consecutive out-of-range replies => end of storage
 _STORAGE_READ_RETRIES = 6  # per-datagram retries to ride out transient VPN packet loss
-# FoxTool pipelines several 200-byte block reads into one datagram (its capture
-# shows 5, reply ~1059 B, safely under a 1500 B MTU). This cuts round-trips ~5x:
+# Several 200-byte block reads are pipelined into one datagram (5 -> a reply of
+# ~1059 B, safely under a 1500 B MTU). This cuts round-trips ~5x:
 # ~323 datagrams instead of ~1614 for the ~322 KB store -> ~25 s vs ~200 s over VPN.
 _STORAGE_BATCH = 5
 # The init/seek reply (6c 23 40) reports the exact project-storage size as a
@@ -120,7 +120,7 @@ class EpsnetProtocolError(EpsnetError):
 
 
 class PlcBusyError(EpsnetError):
-    """The PLC's single management session is held by another client (e.g. FoxTool).
+    """The PLC's single management session is held by another client.
 
     The exclusive management session is only needed for the ``6c 23`` project-storage
     read used to fetch the on-PLC ``.pub`` at setup. Runtime variable polling is not
@@ -790,8 +790,8 @@ class EpsnetUdpClient:
         that opens the PLC's session (discovery ``6c 01``, parameter/file/login
         services, the map fetch): the PLC holds that single session for the
         sender's address and port for as long as packets keep arriving from it,
-        so opening it from the fixed port the poll uses would lock FoxTool, the
-        Firmware Updater and Mosaic out for as long as Home Assistant runs.
+        so opening it from the fixed port the poll uses would lock every other
+        client out for as long as Home Assistant runs.
         """
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -1000,7 +1000,7 @@ class EpsnetUdpClient:
 
         Returns ``(plc_ident, entries)``. Uses the exclusive management session
         (``HELLO`` -> ``6c 01`` -> ``6c 23`` storage walk); raises
-        :class:`PlcBusyError` if another client (e.g. FoxTool) holds that session.
+        :class:`PlcBusyError` if another client holds that session.
         Runtime polling is unaffected. Do this once at setup and cache the result.
         """
         async with self._lock:
@@ -1025,7 +1025,7 @@ class EpsnetUdpClient:
             self._fetch_read_bytes = 0
 
             # Read exactly `total_size` bytes, pipelining _STORAGE_BATCH blocks per
-            # datagram (FoxTool's trick) so the fetch is ~5x fewer round-trips.
+            # datagram so the fetch is ~5x fewer round-trips.
             storage = bytearray()
             offset = 0
             while offset < total_size:
@@ -1166,7 +1166,7 @@ class EpsnetUdpClient:
             _, _, status = _parse_fixed_frame(resp)
             if status == _MGMT_BUSY_STATUS:
                 raise PlcBusyError(
-                    "PLC management session is busy (held by FoxTool or another client)"
+                    "PLC management session is busy (held by another client)"
                 )
             raise EpsnetProtocolError(f"Establish returned status {status:#04x}")
         _control, _address, body = _parse_variable_frame(resp)

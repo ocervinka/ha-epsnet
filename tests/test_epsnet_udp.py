@@ -887,7 +887,7 @@ def test_open_socket_ephemeral_skips_the_configured_local_port() -> None:
 def test_session_opening_requests_never_use_the_poll_port(method, args) -> None:
     """The PLC keeps its single session for the sender's address and port while
     packets keep arriving from it; opening it from the poll's fixed port would
-    hold it for as long as Home Assistant polls (locking out FoxTool & co.)."""
+    hold it for as long as Home Assistant polls (locking out other clients)."""
     client = EpsnetUdpClient("127.0.0.1", 9, local_port=16192, timeout=1.0)
     calls: list[dict] = []
 
