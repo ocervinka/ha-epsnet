@@ -21,6 +21,7 @@ from custom_components.epsnet.epsnet_udp import (
     EpsnetUdpClient,
     plan_point_read_spans,
 )
+from custom_components.epsnet import epsnet_udp
 from custom_components.epsnet.models import EpsnetPoint, PubEntry
 
 
@@ -837,10 +838,10 @@ def test_parse_storage_size_adds_the_image_header() -> None:
     assert client._parse_storage_size(_init_reply_frame(322615)) == 322615 + 0x40
 
 
-def test_parse_storage_size_falls_back_on_bad_reply() -> None:
+def test_parse_storage_size_gives_none_on_bad_reply() -> None:
     client = EpsnetUdpClient("127.0.0.1", 1, local_port=0)
-    # implausible size (0) -> safety cap, not a crash
-    assert client._parse_storage_size(_init_reply_frame(0)) == 0x80000
+    # implausible size (0) -> no size, not a crash; the fetch then tries the header
+    assert client._parse_storage_size(_init_reply_frame(0)) is None
 
 
 @pytest.mark.asyncio
@@ -918,3 +919,67 @@ def test_bool_writes_touch_only_their_own_bit() -> None:
     assert _build_write_inner(point(5), False)[6:-2] == bytes.fromhex("6310033412" "05")
     # a BOOL that owns its whole byte is still written as a byte
     assert _build_write_inner(point(None), True)[6:-2] == bytes.fromhex("630c03341201" "01")
+
+
+def _storage_image(files: bytes, total: int, tail: bytes) -> bytes:
+    """A storage image of ``total`` bytes: 0x40 header with magic and size,
+    ``files`` after it, then ``tail`` (old data or erased flash) to the end."""
+    header = bytearray(0x40)
+    header[0:4] = b"\x00\x03\x40\x00"
+    header[0x2C:0x30] = (total - 0x40).to_bytes(4, "little")
+    return bytes(header) + files + b"\x00" * (total - 0x40 - len(files)) + tail
+
+
+async def _fetch_with_responses(responses: list[bytes]):
+    server = ScriptedUdpServer(responses)
+    server.start()
+    try:
+        client = EpsnetUdpClient("127.0.0.1", server.port, local_port=0, timeout=1.0)
+        _ident, entries = await client.async_fetch_pub_from_plc()
+    finally:
+        server.close()
+    return client, entries, server.requests
+
+
+@pytest.mark.asyncio
+async def test_fetch_takes_the_size_from_the_image_header_when_the_reply_has_none() -> None:
+    """Old data after a shorter image is not erased, so the image's own header
+    sets the end, not the first erased area."""
+    image = _storage_image(b"\r\nlight_1 R B 100 BOOL PUB_OUT\r\n", 200, b"")
+    old = b"\r\nold_light R B 900 BOOL PUB_OUT\r\n".ljust(800, b"\x00")
+    storage = image + old  # 1000 bytes = one batch
+    blocks = [storage[i : i + 200] for i in range(0, 1000, 200)]
+    client, entries, _requests = await _fetch_with_responses(
+        [
+            _read_response_body(0, b"D100 CP201MK V7.2"),
+            _read_response_body(0, b"\x00" * 48),  # init reply without a size
+            _storage_batch_response(0, blocks[:1]),  # header block
+            _storage_batch_response(0, blocks[:1]),  # the walk: one block
+        ]
+    )
+    assert [e.name for e in entries] == ["light_1"]
+    assert client.fetch_progress == (200, 200)
+
+
+@pytest.mark.asyncio
+async def test_fetch_without_any_size_stops_at_erased_flash(monkeypatch) -> None:
+    # A small cap keeps a regression (walking past the erased area) short.
+    monkeypatch.setattr(epsnet_udp, "_STORAGE_MAX_BYTES", 3000)
+    files = b"\r\nlight_1 R B 100 BOOL PUB_OUT\r\n"
+    first = (b"\x07\x07" + files).ljust(1000, b"\x00")  # no header magic
+    erased = b"\xff" * 1000
+    def batch(data: bytes) -> bytes:
+        return _storage_batch_response(0, [data[i : i + 200] for i in range(0, 1000, 200)])
+    client, entries, requests = await _fetch_with_responses(
+        [
+            _read_response_body(0, b"D100 CP201MK V7.2"),
+            _read_response_body(0, b"\x00" * 48),
+            _storage_batch_response(0, [first[:200]]),  # header block: no magic
+            batch(first),
+            batch(erased),
+        ]
+    )
+    # hello, establish, init, header block, two batches; nothing after the erased one
+    assert len(requests) == 6
+    assert [e.name for e in entries] == ["light_1"]
+    assert client.fetch_progress == (1000, 1000)

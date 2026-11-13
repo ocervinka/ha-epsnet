@@ -83,6 +83,13 @@ _STORAGE_SIZE_OFFSET = 45
 # The storage image starts with a 0x40-byte header and the reported size counts
 # from the end of that header, so the whole image is size + 0x40 bytes.
 _STORAGE_HEADER_LEN = 0x40
+# The header starts with this magic and holds the same size at 0x2C.
+_STORAGE_HEADER_MAGIC = b"\x00\x03\x40\x00"
+_STORAGE_HEADER_SIZE_OFFSET = 0x2C
+# With no usable size at all, the walk stops at the first batch that reads as
+# erased flash. Not the preferred end: storage writes don't erase, so old data
+# can follow a shorter image.
+_STORAGE_ERASED = 0xFF
 _MGMT_BUSY_STATUS = 0x03  # fixed-frame status "communication not established" (session held)
 # The management session is global and exclusive; a preceding op (e.g. the CIB scan)
 # can leave it held until the PLC times it out. Retry long enough to ride that out.
@@ -809,6 +816,18 @@ class _SessionProgramSource:
         return bytes(out)
 
 
+def _plausible_storage_total(size: int) -> int | None:
+    """Whole image length for a header size field, or ``None`` if implausible."""
+    if not 0 < size <= _STORAGE_MAX_BYTES - _STORAGE_HEADER_LEN:
+        return None
+    return size + _STORAGE_HEADER_LEN
+
+
+def _is_erased(data: bytes | bytearray) -> bool:
+    """True for a non-empty run of erased flash (all ``0xff``)."""
+    return bool(data) and data.count(_STORAGE_ERASED) == len(data)
+
+
 class EpsnetUdpClient:
     """Minimal direct EPSNET UDP client for the current supported entity set."""
 
@@ -1101,6 +1120,16 @@ class EpsnetUdpClient:
                 ),
             )
             total_size = self._parse_storage_size(init_reply)
+            if total_size is None:
+                total_size = self._storage_size_from_image_header(sock)
+            stop_at_erased = total_size is None
+            if total_size is None:
+                LOGGER.warning(
+                    "Could not read the project-storage size; reading up to the "
+                    "first erased area (at most %d bytes)",
+                    _STORAGE_MAX_BYTES,
+                )
+                total_size = _STORAGE_MAX_BYTES
             self._fetch_total_bytes = total_size
             self._fetch_read_bytes = 0
 
@@ -1109,6 +1138,7 @@ class EpsnetUdpClient:
             storage = bytearray()
             offset = 0
             while offset < total_size:
+                batch_start = len(storage)
                 offsets = [
                     offset + i * _STORAGE_BLOCK_LEN
                     for i in range(_STORAGE_BATCH)
@@ -1121,6 +1151,9 @@ class EpsnetUdpClient:
                         block if block is not None else b"\x00" * _STORAGE_BLOCK_LEN
                     )
                 offset += len(offsets) * _STORAGE_BLOCK_LEN
+                if stop_at_erased and _is_erased(storage[batch_start:]):
+                    total_size = batch_start
+                    self._fetch_total_bytes = total_size
                 self._fetch_read_bytes = min(offset, total_size)
 
             storage = storage[:total_size]
@@ -1134,14 +1167,13 @@ class EpsnetUdpClient:
             )
             return ident, entries
 
-    def _parse_storage_size(self, init_reply: bytes) -> int:
+    def _parse_storage_size(self, init_reply: bytes) -> int | None:
         """Total project-storage size (bytes) from the ``6c 23 40`` init reply.
 
         The read-response body carries a 4-byte little-endian size at a fixed
         offset. It excludes the image's 0x40-byte header, which is added back so
-        the last 64 bytes are read too. If it can't be parsed or looks
-        implausible, fall back to the safety cap (a correct-but-slower over-read
-        the extractor still handles).
+        the last 64 bytes are read too. ``None`` if it can't be parsed or looks
+        implausible.
         """
         try:
             _control, _address, body = _parse_variable_frame(init_reply)
@@ -1150,14 +1182,17 @@ class EpsnetUdpClient:
             )
         except (EpsnetProtocolError, IndexError):
             size = 0
-        if not 0 < size <= _STORAGE_MAX_BYTES - _STORAGE_HEADER_LEN:
-            LOGGER.warning(
-                "Could not parse project-storage size (got %d); using safety cap %d",
-                size,
-                _STORAGE_MAX_BYTES,
-            )
-            return _STORAGE_MAX_BYTES
-        return size + _STORAGE_HEADER_LEN
+        return _plausible_storage_total(size)
+
+    def _storage_size_from_image_header(self, sock: socket.socket) -> int | None:
+        """Total size from the image's own header (the first block), or ``None``."""
+        block = self._read_pub_storage_batch(sock, [0])[0]
+        if block is None or not block.startswith(_STORAGE_HEADER_MAGIC):
+            return None
+        size = int.from_bytes(
+            block[_STORAGE_HEADER_SIZE_OFFSET : _STORAGE_HEADER_SIZE_OFFSET + 4], "little"
+        )
+        return _plausible_storage_total(size)
 
     @property
     def fetch_progress(self) -> tuple[int, int]:
