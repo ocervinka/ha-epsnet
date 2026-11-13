@@ -831,9 +831,10 @@ def _init_reply_frame(size: int) -> bytes:
     )
 
 
-def test_parse_storage_size_reads_little_endian_size() -> None:
+def test_parse_storage_size_adds_the_image_header() -> None:
     client = EpsnetUdpClient("127.0.0.1", 1, local_port=0)
-    assert client._parse_storage_size(_init_reply_frame(322615)) == 322615
+    # The reported size excludes the image's 0x40-byte header.
+    assert client._parse_storage_size(_init_reply_frame(322615)) == 322615 + 0x40
 
 
 def test_parse_storage_size_falls_back_on_bad_reply() -> None:
@@ -845,15 +846,18 @@ def test_parse_storage_size_falls_back_on_bad_reply() -> None:
 @pytest.mark.asyncio
 async def test_fetch_pub_from_plc_batched_offline() -> None:
     pub_line = b"light_3 R B 100 BOOL PUB_OUT"
+    last_line = b"\r\nlight_4 R B 101 BOOL PUB_OUT\r\n"
     total = 400  # exactly two 200-byte blocks -> one batch
-    storage = pub_line + b"\x00" * (total - len(pub_line))
+    # The last line sits in the image's final 64 bytes, past the reported size.
+    storage = pub_line + b"\x00" * (total - len(pub_line) - len(last_line)) + last_line
+    reported = total - 0x40
     blocks = [storage[i : i + 200] for i in range(0, total, 200)]
     ident = b"D100 CP201MK V7.2"
 
     server = ScriptedUdpServer(
         [
             _read_response_body(0, ident),  # 6c 01 establish -> identity
-            _read_response_body(0, b"\x00" * 44 + total.to_bytes(4, "little")),  # 6c 23 40 init -> size
+            _read_response_body(0, b"\x00" * 44 + reported.to_bytes(4, "little")),  # 6c 23 40 init -> size
             _storage_batch_response(0, blocks),  # 6c 23 c8 batched blocks
         ]
     )
@@ -865,7 +869,7 @@ async def test_fetch_pub_from_plc_batched_offline() -> None:
         server.close()
 
     assert got_ident == "D100 CP201MK V7.2"
-    assert [e.name for e in entries] == ["light_3"]
+    assert [e.name for e in entries] == ["light_3", "light_4"]
     assert client.fetch_progress == (total, total)
 
 

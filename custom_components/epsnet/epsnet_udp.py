@@ -76,10 +76,13 @@ _STORAGE_READ_RETRIES = 6  # per-datagram retries to ride out transient VPN pack
 # ~1059 B, safely under a 1500 B MTU). This cuts round-trips ~5x:
 # ~323 datagrams instead of ~1614 for the ~322 KB store -> ~25 s vs ~200 s over VPN.
 _STORAGE_BATCH = 5
-# The init/seek reply (6c 23 40) reports the exact project-storage size as a
+# The init/seek reply (6c 23 40) reports the project-storage size as a
 # 4-byte LE field; parsing it lets us read exactly that far (no over-read) and
 # gives a real 100% for progress. Offset within the read-response body:
 _STORAGE_SIZE_OFFSET = 45
+# The storage image starts with a 0x40-byte header and the reported size counts
+# from the end of that header, so the whole image is size + 0x40 bytes.
+_STORAGE_HEADER_LEN = 0x40
 _MGMT_BUSY_STATUS = 0x03  # fixed-frame status "communication not established" (session held)
 # The management session is global and exclusive; a preceding op (e.g. the CIB scan)
 # can leave it held until the PLC times it out. Retry long enough to ride that out.
@@ -1086,7 +1089,7 @@ class EpsnetUdpClient:
     def _fetch_pub_blocking(self) -> tuple[str, tuple[PubEntry, ...]]:
         with self._open_socket(ephemeral=True) as sock:
             ident = self._establish_mgmt_with_retry(sock)
-            # Seek/init: reply reports the exact project-storage size.
+            # Seek/init: reply reports the project-storage size.
             init_reply = self._exchange_blocking_on_socket(
                 sock,
                 _build_variable_frame(
@@ -1135,8 +1138,10 @@ class EpsnetUdpClient:
         """Total project-storage size (bytes) from the ``6c 23 40`` init reply.
 
         The read-response body carries a 4-byte little-endian size at a fixed
-        offset. If it can't be parsed or looks implausible, fall back to the
-        safety cap (a correct-but-slower over-read the extractor still handles).
+        offset. It excludes the image's 0x40-byte header, which is added back so
+        the last 64 bytes are read too. If it can't be parsed or looks
+        implausible, fall back to the safety cap (a correct-but-slower over-read
+        the extractor still handles).
         """
         try:
             _control, _address, body = _parse_variable_frame(init_reply)
@@ -1145,14 +1150,14 @@ class EpsnetUdpClient:
             )
         except (EpsnetProtocolError, IndexError):
             size = 0
-        if not 0 < size <= _STORAGE_MAX_BYTES:
+        if not 0 < size <= _STORAGE_MAX_BYTES - _STORAGE_HEADER_LEN:
             LOGGER.warning(
                 "Could not parse project-storage size (got %d); using safety cap %d",
                 size,
                 _STORAGE_MAX_BYTES,
             )
             return _STORAGE_MAX_BYTES
-        return size
+        return size + _STORAGE_HEADER_LEN
 
     @property
     def fetch_progress(self) -> tuple[int, int]:
