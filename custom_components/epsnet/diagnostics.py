@@ -13,6 +13,7 @@ from .models import (
     EntityCatalog,
     RuntimeDiscoveredDevice,
 )
+from .program_layout import cross_check, layout_snapshot
 
 
 def _hex16(value: int) -> str:
@@ -188,6 +189,12 @@ def build_catalog_snapshot(
         "raw_reads": {
             label: raw_hex for label, raw_hex in catalog.runtime_inventory.raw_reads
         },
+        "program_devices": list(catalog.program_report),
+        "program_layout": (
+            None
+            if catalog.runtime_inventory.program_layout is None
+            else layout_snapshot(catalog.runtime_inventory.program_layout)
+        ),
     }
 
 
@@ -306,6 +313,7 @@ _SHORT_CODE = re.compile(r"[A-Za-z]{1,3}\d+[A-Za-z]?")
 _TOKEN = re.compile(r"[A-Za-z0-9]+")
 _NAME_KEYS = frozenset({
     "entries", "entry_names", "entity_keys", "device_key", "device_name", "registry_keys",
+    "pub_entry",
 })
 
 
@@ -359,20 +367,18 @@ def anonymize_names(data: dict[str, object], names: list[str]) -> dict[str, obje
     return walk(data, None)  # type: ignore[return-value]
 
 
-async def _read_program_checksum(client) -> str | None:
-    """S 70 (DWORD) holds the program checksum on the PLCs tested so far."""
-    from .models import EpsnetPoint
-
-    point = EpsnetPoint(
-        key="s70", name="S70", register="S", storage="D", address=70,
-        bit=None, data_type="UDINT",
-    )
-    try:
-        values = await client.get_point_values((point,))
-    except Exception:  # diagnostics must never fail on a read
+def program_layout_vs_map(layout, blob: object) -> dict[str, object] | None:
+    """Every X/Y variable of the stored map checked against the program's layout."""
+    if layout is None or layout.error or not isinstance(blob, dict) or not blob.get("entries"):
         return None
-    value = values.get(point.key)
-    return None if value is None else _hex32(int(value))
+    return cross_check(layout, list(blob["entries"]))
+
+
+async def _read_program_checksum(client) -> str | None:
+    from .program_watch import read_program_checksum
+
+    value = await read_program_checksum(client)
+    return None if value is None else _hex32(value)
 
 
 async def async_get_config_entry_diagnostics(hass, entry) -> dict[str, object]:
@@ -406,6 +412,9 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict[str, object]:
         "entity_count": len(runtime.catalog.entities),
         "program_checksum_s70": await _read_program_checksum(runtime.client),
         "map": map_snapshot(entry.data.get(CONF_MAP)),
+        "program_layout_vs_map": program_layout_vs_map(
+            runtime.catalog.runtime_inventory.program_layout, entry.data.get(CONF_MAP)
+        ),
         "catalog": build_catalog_snapshot(
             runtime.catalog,
             host=str(entry.data.get(CONF_HOST)),

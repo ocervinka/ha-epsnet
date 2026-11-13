@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -21,9 +22,21 @@ class EpsnetEntity(CoordinatorEntity):
         self._attr_name = spec.name
         self._attr_unique_id = f"{entry_id}_{spec.key}"
         self._attr_entity_registry_enabled_default = spec.enabled_by_default
+        if spec.diagnostic:
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.coordinator.add_state_name(self.spec.state_name)
+
+    async def async_will_remove_from_hass(self) -> None:
+        self.coordinator.remove_state_name(self.spec.state_name)
+        await super().async_will_remove_from_hass()
 
     @property
     def available(self) -> bool:
+        if self.spec.from_program and self.coordinator.program_layout_stale:
+            return False
         return super().available and self.spec.state_name in self.coordinator.data
 
     @property

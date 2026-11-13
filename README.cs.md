@@ -21,12 +21,15 @@ v upozornění v **Opravách**, takže víte, co chybí.
 - při nastavení projde PLC a zjistí, které moduly CIB jsou skutečně připojené; každé zařízení z mapy
   proměnných přiřadí ke správnému modulu podle jeho pořadí v programu PLC
 - mapu publikovaných proměnných (soubor `.pub` programu) načte přímo z PLC, nebo z nahraného souboru
+- bez mapy: všechny vstupy a výstupy podporovaných modulů CIB, načtené z konfigurace I/O
+  uložené přímo v programu PLC, jen pro čtení
 - entity pro světla, spínače, binární vstupy (tlačítka, PIR, magnetické kontakty) a teploty
 - rychlé čtení binárních vstupů (např. každých 100 ms), aby se zachytil i krátký stisk tlačítka
 - diagnostika a senzory s dobou čtení
 
 Podporované moduly: `SA2-04M`, `SA2-012M`, `DA2-22M`, `WSB2-20`, `WSB2-40`, `IM2-40B`,
-`IM2-140M`, `C-IT-0200I`.
+`IM2-140M`, `C-IT-0200I`, `C-RC-0011R` (teplota, vlhkost, externí teplota, tlačítka; podle popisu
+modulu, zatím nevyzkoušeno na skutečné instalaci).
 
 ## Instalace
 
@@ -66,15 +69,27 @@ mapa opravdu změnila, ukáže se upozornění v Opravách, a soubor, který nes
 se odmítne. Tamtéž lze změnit intervaly čtení: prodlevu mezi úplnými čteními (výchozí 500 ms)
 a rychlé čtení tlačítek a čidel (doporučeno 100 ms).
 
-### Mapa proměnných je nutná
+### Mapa proměnných
 
 Mapa je soubor `.pub` programu: seznam publikovaných proměnných s jejich názvy a adresami v PLC.
-Integrace z ní čte hodnoty a přes ni spíná (proměnné programu `_ON` / `_OFF`). Samotné procházení
-PLC zjistí, které moduly jsou připojené, v jakém pořadí a jak velké, ale ne, kde jejich data
-v paměti PLC začínají — bez mapy se proto moduly zobrazí jako zařízení bez entit a nastavení si
-o soubor řekne.
-Pokud soubor nemáte po ruce, nastavení může pokračovat i bez mapy (jen moduly), např. abyste
-mohli stáhnout diagnostiku k hlášení chyby.
+Dává entitám vaše vlastní názvy a integrace přes ni spíná (proměnné programu `_ON` / `_OFF`).
+
+I bez mapy může nastavení pokračovat: integrace přečte konfiguraci I/O přeloženou v programu PLC
+(který modul je kde v paměti PLC) a vytvoří entitu pro každý vstup a výstup podporovaných modulů
+CIB — tlačítka, vstupy, teploty, stavy relé a LED, úrovně stmívačů. Jsou **jen pro čtení**
+a pojmenované podle typu modulu a adresy na sběrnici (např. *WSB2-40 1A2B Temperature*): program
+PLC výstupy v každém cyklu přepisuje, takže je lze zobrazit, ale bez řídicích proměnných programu
+ne spínat. Soubor `.pub` doplněný později tyto entity zachová (stejná ID entit, historie
+i automatizace), dá jim názvy z vašeho programu a přidá světla a spínače, které lze ovládat.
+Moduly na interní sběrnici CPU (ne CIB) zahrnuté nejsou.
+
+S mapou se přidají i kanály, které žádná z jejích entit nezobrazuje (např. sabotážní kontakty,
+stavové příznaky, místní tlačítka reléových modulů, fyzické stavy výstupů), vypnuté — zapněte ty,
+které chcete. Vypnuté entity se z PLC nečtou.
+
+Když PLC dostane nový program, integrace to pozná (změní se kontrolní součet programu), počká,
+až programovací nástroj skončí, a konfiguraci I/O přečte znovu; pokud se změnila, integrace se
+znovu načte. Do té doby jsou entity umístěné podle programu nedostupné.
 Chcete-li soubor s diagnostikou sdílet veřejně, zapněte *Nastavit → Intervaly čtení a diagnostika →
 Skrýt názvy proměnných v diagnostice*: vlastní slova v názvech se nahradí zástupnými `w1`, `w2`…
 

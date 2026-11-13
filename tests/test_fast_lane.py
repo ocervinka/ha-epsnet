@@ -87,3 +87,26 @@ async def test_full_cycle_skips_fast_inputs_and_keeps_fresh_fast_values(monkeypa
     data = await coordinator._async_update_data()
     assert client.asked[-1] == ("temp",)
     assert data == {"temp": 21.5, "in_pir": True}
+
+
+@pytest.mark.asyncio
+async def test_entities_starting_disabled_are_read_only_once_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _harness._load_coordinator_module(monkeypatch)
+    catalog = _Catalog((_Entry(name="temp"), _Entry(name="tamper")))
+    catalog.entities = (
+        SimpleNamespace(state_name="temp", enabled_by_default=True, transform_read="none"),
+        SimpleNamespace(state_name="tamper", enabled_by_default=False, transform_read="none"),
+    )
+    client = _Client({"temp": 21.5, "tamper": False})
+    coordinator = module.EpsnetDataCoordinator(
+        _harness._FakeHass(), client=client, catalog=catalog, name="EPSNET",
+        scan_interval_milliseconds=500,
+    )
+    await coordinator._async_update_data()
+    assert client.asked[-1] == ("temp",)
+    coordinator.add_state_name("tamper")  # the user enabled it; the entity was added
+    await coordinator._async_update_data()
+    assert client.asked[-1] == ("temp", "tamper")
+    coordinator.remove_state_name("tamper")
+    await coordinator._async_update_data()
+    assert client.asked[-1] == ("temp",)

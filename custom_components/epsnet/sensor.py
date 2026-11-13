@@ -119,6 +119,10 @@ class EpsnetTemperatureSensorEntity(EpsnetEntity, SensorEntity):
         super().__init__(coordinator, spec, entry_id=entry_id)
         self._attr_device_class = spec.device_class
         self._attr_native_unit_of_measurement = spec.native_unit_of_measurement
+        if spec.device_class == "temperature":
+            # REALs from the PLC carry float noise (22.2999992…); one decimal is the
+            # sensors' real resolution. Users can still change it per entity.
+            self._attr_suggested_display_precision = 1
         self._last_good: float | int | str | None = None
 
     @property

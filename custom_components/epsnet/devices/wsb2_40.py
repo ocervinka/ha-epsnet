@@ -1,4 +1,4 @@
-from ..models import RuntimeChannelDefinition, RuntimeModelInfo
+from ..models import RuntimeModelInfo, bit_item, value_item, MathFormula
 
 MODEL_INFO = RuntimeModelInfo(
     unit_code=0x0C36,
@@ -7,42 +7,11 @@ MODEL_INFO = RuntimeModelInfo(
     type_key="generic_room_controller",
     subsystem="room_controls",
     description="4-button wall switch with LEDs and thermostat input",
-    channels=(
-        *(
-            RuntimeChannelDefinition(
-                role="button_input",
-                name_template="button_{channel:02d}",
-                channel_index=index + 1,
-                register="X",
-                storage="B",
-                data_type="BOOL",
-                address_offset=0,
-                bit_offset=index,
-            )
-            for index in range(4)
-        ),
-        RuntimeChannelDefinition(
-            role="temperature",
-            name_template="temperature",
-            channel_index=0,
-            register="X",
-            storage="F",
-            data_type="REAL",
-            address_offset=1,
-        ),
-        *(
-            RuntimeChannelDefinition(
-                role="led_state",
-                name_template="led_{channel:02d}",
-                channel_index=index + 1,
-                register="Y",
-                storage="B",
-                data_type="BOOL",
-                address_offset=0,
-                bit_offset=index,
-                writable=True,
-            )
-            for index in range(4)
-        ),
+    inputs=(
+        bit_item("button", ("UP1", "DOWN1", "UP2", "DOWN2"), key_prefix="button"),
+        value_item("temperature", "Temperature", "temperature", MathFormula.DIV_100),
+    ),
+    outputs=(
+        bit_item("led", ("GREEN1", "RED1", "GREEN2", "RED2"), key_prefix="led"),
     ),
 )

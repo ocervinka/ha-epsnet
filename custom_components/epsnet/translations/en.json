@@ -65,11 +65,11 @@
       },
       "source_no_map": {
         "title": "Choose the variable map source",
-        "description": "Discover the published-variable map straight from the PLC (recommended), or upload an exported .pub file.\n\n⚠️ The PLC holds no published-variable map (no .pub was stored in it — e.g. a program loaded from Mosaic). Upload the .pub file from your project instead; in Mosaic, enable it under Project manager → Sw → Export files → Assembler (.pub) and rebuild. If you don't have the .pub at hand, you can continue without a map: the modules are listed without entities and ⋮ → Download diagnostics works.",
+        "description": "Discover the published-variable map straight from the PLC (recommended), or upload an exported .pub file.\n\n⚠️ The PLC holds no published-variable map (no .pub was stored in it — e.g. a program loaded from Mosaic). Upload the .pub file from your project instead; in Mosaic, enable it under Project manager → Sw → Export files → Assembler (.pub) and rebuild. If you don't have the .pub at hand, you can continue without it: the modules' inputs and outputs are then read from the PLC program where possible and shown read-only, named by module type and bus address.",
         "menu_options": {
           "discover": "Discover from the PLC (recommended)",
           "upload": "Upload a .pub file",
-          "inventory_only": "Continue without a map (modules only, no entities)"
+          "inventory_only": "Continue without a .pub file (read-only, generic names)"
         }
       }
     },
@@ -170,6 +170,14 @@
     "no_variable_map": {
       "title": "EPSNET: no PLC variable map",
       "description": "This entry has no published-variable map, so its {count} module(s) are listed without entities: without the map it is unknown where their data sits and how to switch them. Open the integration, choose Configure → Re-import the variable map from the PLC, or delete and re-add the integration and upload the program's .pub file."
+    },
+    "no_variable_map_read_only": {
+      "title": "EPSNET: no .pub file — read-only entities",
+      "description": "This entry has no published-variable map. The inputs and outputs of its {count} module(s) are read from the PLC program itself and shown read-only, named by module type and bus address. To get your own names and switch outputs, open the integration and choose Configure → Re-import the variable map from the PLC, or delete and re-add the integration and upload the program's .pub file."
+    },
+    "program_changed": {
+      "title": "EPSNET: PLC program changed",
+      "description": "A new program was sent to the PLC, and its input/output layout could not be read again (the PLC may still be busy with the programming tool). Module channels placed from the program are unavailable until then. Reload the integration to try again."
     }
   },
   "entity": {

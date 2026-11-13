@@ -21,6 +21,8 @@ Modules the integration doesn't know yet are not created as devices; they are li
 - live discovery of the installed CIB modules during setup; each device from the variable map is
   paired with its physical module by the module's position in the PLC program
 - the published-variable map (the program's `.pub`) read straight from the PLC, or uploaded
+- without a map: every input and output of the supported CIB modules, read from the PLC program's
+  own I/O configuration and shown read-only
 - Home Assistant entities for lights, switches, binary sensors, and sensors
 - grouped/block polling by default, with automatic fallback to one-by-one reads on grouped-read errors
 - diagnostic merged-catalog output plus poll timing sensors
@@ -37,6 +39,8 @@ The integration currently knows the data layout of:
 - `IM2-40B`
 - `IM2-140M`
 - `C-IT-0200I`
+- `C-RC-0011R` (temperature, humidity, external temperature, buttons; laid out from its device
+  description, not yet tested on a real installation)
 
 ## Installation
 
@@ -77,15 +81,28 @@ or **… from a file (.pub)** when the PLC holds no map or an old one (a program
 Mosaic). Either way the entry and its entity IDs stay; a repair notice tells you when the map
 actually changed, and a file that pairs with none of the PLC's modules is refused.
 
-### The variable map is required
+### The variable map
 
 The map is the program's `.pub` file: the list of published variables with their names and
-addresses in the PLC. It is what the integration reads values from and switches through (the
-program's `_ON` / `_OFF` command variables). Discovery alone finds which modules are installed, in
-which order and how large they are, but not where their data starts in the PLC's memory — so
-without a map the modules are listed as devices with no entities, and setup asks for the file.
-If you don't have it at hand, setup can also continue without a map (modules only), e.g. to
-download diagnostics for a bug report.
+addresses in the PLC. It gives entities your own names and is what the integration switches
+through (the program's `_ON` / `_OFF` command variables).
+
+Without a map, setup can still continue: the integration reads the I/O configuration compiled into
+the PLC program (which module sits where in the PLC's memory) and creates an entity for every input
+and output of the supported CIB modules — buttons, inputs, temperatures, relay and LED states,
+dimmer levels. They are **read-only** and named by module type and bus address (e.g. *WSB2-40 1A2B
+Temperature*): the PLC program rewrites the outputs every cycle, so they can be shown but not
+switched without the program's command variables. Adding the `.pub` later keeps those entities
+(same entity IDs, history and automations), gives them the names from your program and adds the
+lights and switches you can control. Modules on a CPU's internal bus (not CIB) are not covered.
+
+With a map, the channels none of its entities shows (e.g. tamper contacts, status flags, the
+relay modules' local switches, the physical output states) are added as well, disabled — enable
+the ones you want. Disabled entities are not read from the PLC.
+
+When the PLC gets a new program, the integration notices (the program checksum changes), waits
+until the programming tool is done, and reads the I/O configuration again; if it changed, the
+integration reloads. Meanwhile the entities placed from the program are unavailable.
 
 - **FoxTool** stores the `.pub` in the PLC when it loads the program, so *discover from the
   PLC* finds it.
@@ -115,8 +132,9 @@ language, copy `en.json` to `<language code>.json` and translate the values.
 
 **Download diagnostics** (on the integration's ⋮ menu) returns the merged catalog: discovered
 modules and their type codes, how they matched the published variables, unsupported modules, the
-raw discovery reads, the full stored variable map (one line per variable, as in the `.pub`) and the
-program checksum the PLC reports. To post the file publicly, turn on *Configure → Polling intervals and diagnostics →
+raw discovery reads, the full stored variable map (one line per variable, as in the `.pub`), the
+program checksum the PLC reports, the I/O configuration read from the program (with the raw bytes)
+and, with a map, a check of every map variable against it. To post the file publicly, turn on *Configure → Polling intervals and diagnostics →
 Hide variable names in diagnostics*: your own words in the names become placeholders (`w1`, `w2`…),
 consistently, so the structure stays readable. The same catalog (without the raw reads) is also written at startup to
 `epsnet/<entry_id>_merged_catalog.yaml` in the Home Assistant config directory.
@@ -141,7 +159,7 @@ Grouped/block polling is the default production read path.
 
 - The direct EPSNET backend is reverse-engineered and intentionally focused on the request/response
   patterns needed by the current entity set.
-- Without a variable map nothing can be read or switched (see above).
+- Without a variable map, inputs and outputs are read-only and CIB modules only (see above).
 - Advanced room-controller features such as richer HVAC/setpoint behavior are still out of scope for the
   current public release.
 

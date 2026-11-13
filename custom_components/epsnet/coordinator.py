@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 from dataclasses import dataclass
 from datetime import timedelta
 import logging
@@ -95,6 +96,33 @@ class EpsnetDataCoordinator(
         self._fast_sequence = 0
         self._fast_changes = 0
         self._fast_failures = 0
+        # Entities that start disabled are polled only once the user enables them
+        # (an enabled entity registers its state name when it is added).
+        enabled = {e.state_name for e in catalog.entities if e.enabled_by_default}
+        self._opt_in_state_names = frozenset(
+            e.state_name
+            for e in catalog.entities
+            if not e.enabled_by_default and e.state_name not in enabled
+        )
+        self._added_state_names: Counter[str] = Counter()
+        # True while a changed PLC program has not been re-read: values placed by
+        # the old program layout may be wrong, so those entities are unavailable.
+        self.program_layout_stale = False
+
+    @callback
+    def add_state_name(self, state_name: str) -> None:
+        self._added_state_names[state_name] += 1
+
+    @callback
+    def remove_state_name(self, state_name: str) -> None:
+        self._added_state_names[state_name] -= 1
+        if self._added_state_names[state_name] <= 0:
+            del self._added_state_names[state_name]
+
+    def polled_state_entries(self):
+        """State entries to read: enabled-by-default entities plus the ones enabled since."""
+        skipped = self._opt_in_state_names - self._added_state_names.keys()
+        return tuple(e for e in self.catalog.state_entries() if e.name not in skipped)
 
     # ------------------------------------------------------------------ fast lane ----
     @property
@@ -360,7 +388,7 @@ class EpsnetDataCoordinator(
     async def _async_update_data(self) -> dict[str, ScalarValue]:
         self._poll_sequence += 1
         poll_started = monotonic()
-        state_entries = self.catalog.state_entries()
+        state_entries = self.polled_state_entries()
         fast_running = self._fast_task is not None and self._fast_values
         if fast_running:
             # The fast lane owns the binary inputs: don't re-read them here (shorter cycle) and,

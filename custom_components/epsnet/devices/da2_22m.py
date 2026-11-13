@@ -1,4 +1,4 @@
-from ..models import RuntimeChannelDefinition, RuntimeModelInfo
+from ..models import RuntimeModelInfo, bit_item, ModuleItem, ModuleChannel
 
 MODEL_INFO = RuntimeModelInfo(
     unit_code=0x0C1D,
@@ -7,45 +7,12 @@ MODEL_INFO = RuntimeModelInfo(
     type_key="generic_dimmer_module",
     subsystem="dimmers",
     description="2-channel dimmer actuator",
-    channels=(
-        *(
-            RuntimeChannelDefinition(
-                role="binary_input",
-                name_template="input_{channel:02d}",
-                channel_index=index + 1,
-                register="X",
-                storage="B",
-                data_type="BOOL",
-                address_offset=0,
-                bit_offset=index,
-            )
-            for index in range(2)
-        ),
-        *(
-            RuntimeChannelDefinition(
-                role="local_switch",
-                name_template="local_switch_{channel:02d}",
-                channel_index=index + 1,
-                register="X",
-                storage="B",
-                data_type="BOOL",
-                address_offset=1,
-                bit_offset=index,
-            )
-            for index in range(2)
-        ),
-        *(
-            RuntimeChannelDefinition(
-                role="channel_state",
-                name_template="dimmer_{channel:02d}",
-                channel_index=index + 1,
-                register="Y",
-                storage="F",
-                data_type="REAL",
-                address_offset=index * 4,
-                writable=True,
-            )
-            for index in range(2)
-        ),
+    inputs=(
+        bit_item("input", ("IN1", "IN2"), key_prefix="input"),
+        bit_item("local_switch", ("SW1", "SW2"), key_prefix="local"),
+    ),
+    outputs=(
+        ModuleItem((ModuleChannel(key="dimmer_out1", label="OUT1", role="dimmer"),)),
+        ModuleItem((ModuleChannel(key="dimmer_out2", label="OUT2", role="dimmer"),)),
     ),
 )

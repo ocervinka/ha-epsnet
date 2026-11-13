@@ -10,6 +10,7 @@ from pathlib import Path
 from .catalog import EntityCatalog, build_catalog, unsupported_module_summary
 from .client import EpsnetClient
 from .const import (
+    CONF_PROGRAM_FIRST,
     ISSUE_TRACKER_URL,
     CONF_HOST,
     CONF_LOCAL_PORT,
@@ -112,17 +113,26 @@ def _async_update_no_map_issue(
     if has_map:
         ir.async_delete_issue(hass, DOMAIN, issue_id)
         return
-    LOGGER.warning(
-        "No published-variable map for %s: modules are listed without entities",
-        entry.title,
-    )
+    from_program = sum(1 for e in catalog.entities if e.from_program)
+    if from_program:
+        LOGGER.warning(
+            "No published-variable map for %s: %d module channels placed from the PLC "
+            "program, read-only and named by module",
+            entry.title,
+            from_program,
+        )
+    else:
+        LOGGER.warning(
+            "No published-variable map for %s: modules are listed without entities",
+            entry.title,
+        )
     ir.async_create_issue(
         hass,
         DOMAIN,
         issue_id,
         is_fixable=False,
         severity=ir.IssueSeverity.WARNING,
-        translation_key="no_variable_map",
+        translation_key="no_variable_map_read_only" if from_program else "no_variable_map",
         translation_placeholders={"count": str(len(catalog.runtime_inventory.devices))},
     )
 
@@ -286,7 +296,11 @@ async def async_setup_entry(hass, entry) -> bool:
         # re-fetch at runtime, so startup never contends for the exclusive session.
         inventory = await client.discover_runtime_inventory()
 
-        catalog = build_catalog(entries, inventory)
+        catalog = build_catalog(
+            entries,
+            inventory,
+            program_first=bool(entry.data.get(CONF_PROGRAM_FIRST)),
+        )
         _async_update_unsupported_issue(hass, entry, catalog)
         _async_update_no_map_issue(hass, entry, catalog, has_map=bool(entries))
         if entries and not catalog.devices_by_key:
@@ -317,7 +331,11 @@ async def async_setup_entry(hass, entry) -> bool:
         raise
 
     fast_ms = int(entry.options.get(CONF_FAST_SCAN_INTERVAL, entry.data.get(CONF_FAST_SCAN_INTERVAL, DEFAULT_FAST_SCAN_INTERVAL)) or 0)
-    fast_names = {spec.state_name for spec in catalog.entities_for_platform("binary_sensor")}
+    fast_names = {
+        spec.state_name
+        for spec in catalog.entities_for_platform("binary_sensor")
+        if spec.enabled_by_default
+    }
     fast_entries = tuple(e for e in catalog.state_entries() if e.name in fast_names)
     coordinator = EpsnetDataCoordinator(
         hass,
@@ -341,6 +359,14 @@ async def async_setup_entry(hass, entry) -> bool:
         pub_enrichment_active=bool(entries),
     )
     await hass.config_entries.async_forward_entry_setups(entry, SUPPORTED_PLATFORMS)
+    from .program_layout import layout_fingerprint
+    from .program_watch import ProgramWatcher
+
+    if layout_fingerprint(catalog.runtime_inventory.program_layout) is not None:
+        watcher = ProgramWatcher(hass, entry, client, coordinator, catalog)
+        entry.async_create_background_task(
+            hass, watcher.run(), name=f"{entry.title} - program watch"
+        )
     return True
 
 

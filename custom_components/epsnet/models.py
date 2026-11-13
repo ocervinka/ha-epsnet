@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .program_layout import ProgramIoLayout
 
 ScalarValue = bool | float | int | str
 
@@ -224,20 +228,66 @@ class MathFormula(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class RuntimeChannelDefinition:
-    """One abstract channel exposed by a runtime model formula."""
+class ModuleChannel:
+    """One channel inside a module data item.
 
+    ``bit`` is set for flags packed into a byte/word item (bit 0 = lowest bit of
+    the item's first byte). Value channels have no bit; ``raw_scale`` is applied
+    when the program leaves the item raw (a 16-bit integer instead of a REAL the
+    firmware already scaled).
+    """
+
+    key: str
+    label: str
     role: str
-    name_template: str
-    channel_index: int
-    register: str
-    storage: str
-    data_type: str
-    address_offset: int
-    bit_offset: int | None = None
-    writable: bool = False
-    transform_read: MathFormula = MathFormula.NONE
-    transform_write: MathFormula = MathFormula.NONE
+    bit: int | None = None
+    raw_scale: MathFormula = MathFormula.NONE
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleItem:
+    """One data item of a module, in the order of the program's conversion codes.
+
+    ``optional`` items may be missing from a program (a part of the module that
+    can be switched off); they are skipped when the program's item does not fit.
+    ``byte_value`` marks a value item that is a single byte (not a REAL / word).
+    """
+
+    channels: tuple[ModuleChannel, ...]
+    optional: bool = False
+    byte_value: bool = False
+
+
+def bit_item(role: str, labels: tuple[str | None, ...], *, key_prefix: str) -> ModuleItem:
+    """A byte/word item of flags; ``None`` leaves a bit unused."""
+    return ModuleItem(
+        tuple(
+            ModuleChannel(
+                key=f"{key_prefix}_{label.lower()}",
+                label=label,
+                role=role,
+                bit=bit,
+            )
+            for bit, label in enumerate(labels)
+            if label is not None
+        )
+    )
+
+
+def value_item(
+    key: str,
+    label: str,
+    role: str,
+    raw_scale: MathFormula = MathFormula.NONE,
+    *,
+    optional: bool = False,
+    byte_value: bool = False,
+) -> ModuleItem:
+    return ModuleItem(
+        (ModuleChannel(key=key, label=label, role=role, raw_scale=raw_scale),),
+        optional=optional,
+        byte_value=byte_value,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,31 +300,11 @@ class RuntimeModelInfo:
     type_key: str
     subsystem: str
     description: str
-    channels: tuple[RuntimeChannelDefinition, ...] = ()
-
-    @property
-    def input_size(self) -> int:
-        """Return the total bytes of X (input) image occupied by this model."""
-        return max(
-            (
-                c.address_offset + _byte_size_for_data_type(c.data_type, point_name=c.name_template)
-                for c in self.channels
-                if c.register == "X"
-            ),
-            default=0,
-        )
-
-    @property
-    def output_size(self) -> int:
-        """Return the total bytes of Y (output) image occupied by this model."""
-        return max(
-            (
-                c.address_offset + _byte_size_for_data_type(c.data_type, point_name=c.name_template)
-                for c in self.channels
-                if c.register == "Y"
-            ),
-            default=0,
-        )
+    # The module's data items in conversion-code order (inputs in X, outputs in Y).
+    inputs: tuple[ModuleItem, ...] = ()
+    outputs: tuple[ModuleItem, ...] = ()
+    # the program may hold more items after the described ones (internal data)
+    extra_items_ignored: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -425,6 +455,8 @@ class RuntimeInventory:
     # (label, hex) of the raw discovery reads, kept for the diagnostics download
     # so layouts from other PLC models can be analysed from a user report.
     raw_reads: tuple[tuple[str, str], ...] = ()
+    # I/O layout decoded from the PLC program (None = not read)
+    program_layout: ProgramIoLayout | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -485,6 +517,9 @@ class EntitySpec:
     device_key: str | None = None
     transform_read: MathFormula = MathFormula.NONE
     transform_write: MathFormula = MathFormula.NONE
+    diagnostic: bool = False
+    # placed from the PLC program's I/O layout (not from the variable map)
+    from_program: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -502,6 +537,8 @@ class EntityCatalog:
     # Modules found on the bus whose type code has no definition yet. They get
     # no device and no entities; they are reported to the user instead.
     unsupported_runtime_devices: tuple[RuntimeDiscoveredDevice, ...] = ()
+    # per program device line: what was made of it (diagnostics)
+    program_report: tuple[dict[str, object], ...] = ()
 
     def entities_for_platform(self, platform: str) -> tuple[EntitySpec, ...]:
         """Return all entity specs for one Home Assistant platform."""

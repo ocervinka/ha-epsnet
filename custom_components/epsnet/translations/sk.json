@@ -65,11 +65,11 @@
       },
       "source_no_map": {
         "title": "Zdroj mapy premenných",
-        "description": "Načítajte mapu publikovaných premenných priamo z PLC (odporúčané), alebo nahrajte exportovaný súbor .pub.\n\n⚠️ V PLC nie je uložená mapa publikovaných premenných (nie je v ňom súbor .pub — napr. program nahraný z Mosaicu). Nahrajte namiesto toho súbor .pub z vášho projektu; v Mosaicu v Project manager → Sw → Export files zapnite Assembler (.pub) a program preložte. Ak súbor .pub nemáte po ruke, môžete pokračovať bez mapy: moduly sa zobrazia bez entít a ⋮ → Stiahnuť diagnostiku funguje.",
+        "description": "Načítajte mapu publikovaných premenných priamo z PLC (odporúčané), alebo nahrajte exportovaný súbor .pub.\n\n⚠️ V PLC nie je uložená mapa publikovaných premenných (nie je v ňom súbor .pub — napr. program nahraný z Mosaicu). Nahrajte namiesto toho súbor .pub z vášho projektu; v Mosaicu v Project manager → Sw → Export files zapnite Assembler (.pub) a program preložte. Ak súbor .pub nemáte po ruke, môžete pokračovať bez neho: vstupy a výstupy modulov sa potom, kde to ide, načítajú z programu PLC a zobrazia len na čítanie, pomenované podľa typu modulu a adresy na zbernici.",
         "menu_options": {
           "discover": "Načítať z PLC (odporúčané)",
           "upload": "Nahrať súbor .pub",
-          "inventory_only": "Pokračovať bez mapy (len moduly, bez entít)"
+          "inventory_only": "Pokračovať bez súboru .pub (len čítanie, všeobecné názvy)"
         }
       }
     },
@@ -170,6 +170,14 @@
     "no_variable_map": {
       "title": "EPSNET: chýba mapa premenných PLC",
       "description": "Táto položka nemá mapu publikovaných premenných, preto je {count} modul(ov) uvedených bez entít: bez mapy nie je známe, kde sú ich dáta ani ako ich spínať. Otvorte integráciu a zvoľte Konfigurovať → Znovu načítať mapu premenných z PLC, alebo integráciu odstráňte, pridajte znova a nahrajte súbor .pub z programu."
+    },
+    "no_variable_map_read_only": {
+      "title": "EPSNET: bez súboru .pub — entity len na čítanie",
+      "description": "Táto položka nemá mapu publikovaných premenných. Vstupy a výstupy jej {count} modul(ov) sa čítajú priamo z programu PLC a zobrazujú sa len na čítanie, pomenované podľa typu modulu a adresy na zbernici. Pre vlastné názvy a spínanie výstupov otvorte integráciu a zvoľte Konfigurovať → Znovu načítať mapu premenných z PLC, alebo integráciu odstráňte, pridajte znova a nahrajte súbor .pub z programu."
+    },
+    "program_changed": {
+      "title": "EPSNET: program PLC sa zmenil",
+      "description": "Do PLC bol nahraný nový program a jeho rozloženie vstupov a výstupov sa nepodarilo znovu načítať (PLC môže byť ešte obsadené programovacím nástrojom). Kanály modulov umiestnené podľa programu sú dovtedy nedostupné. Pre nový pokus integráciu znovu načítajte."
     }
   },
   "entity": {

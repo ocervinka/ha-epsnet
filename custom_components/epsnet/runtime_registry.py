@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .devices.c_it_0200i import MODEL_INFO as C_IT_0200I
+from .devices.c_rc_0011r import MODEL_INFO as C_RC_0011R
 from .devices.da2_22m import MODEL_INFO as DA2_22M
 from .devices.im2_140m import MODEL_INFO as IM2_140M
 from .devices.im2_40b import MODEL_INFO as IM2_40B
@@ -14,6 +15,7 @@ from .models import RuntimeModelInfo
 
 _RUNTIME_MODEL_INFOS = (
     C_IT_0200I,
+    C_RC_0011R,
     DA2_22M,
     IM2_140M,
     IM2_40B,
@@ -40,5 +42,4 @@ def lookup_runtime_model_info(unit_code: int) -> RuntimeModelInfo:
         type_key="generic_input_module", # Default to inputs for safety
         subsystem="digital_inputs",
         description=f"Unknown EPSNET device (0x{unit_code:04x})",
-        channels=(), # No channels defined yet
     )

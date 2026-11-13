@@ -208,8 +208,8 @@ async def test_unsupported_modules_are_reported_not_created(
         key="unknown",
         runtime_index=30,
         slot_index=30,
-        runtime_type_code=0x0D31,
-        model_info=lookup_runtime_model_info(0x0D31),
+        runtime_type_code=0x0D99,
+        model_info=lookup_runtime_model_info(0x0D99),
     )
     inventory = dataclasses.replace(
         SYNTH_INVENTORY,
@@ -234,7 +234,7 @@ async def test_unsupported_modules_are_reported_not_created(
         await hass.async_block_till_done()
         result = await hass.config_entries.flow.async_configure(result["flow_id"])
         assert result["step_id"] == "confirm_unsupported"
-        assert result["description_placeholders"]["unsupported_codes"] == "0x0d31"
+        assert result["description_placeholders"]["unsupported_codes"] == "0x0d99"
         assert result["description_placeholders"]["unsupported_count"] == "1"
 
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
@@ -253,12 +253,12 @@ async def test_unsupported_modules_are_reported_not_created(
             DOMAIN, f"unsupported_modules_{entry.entry_id}"
         )
         assert issue is not None
-        assert issue.translation_placeholders["codes"] == "0x0d31"
+        assert issue.translation_placeholders["codes"] == "0x0d99"
 
         diag = await async_get_config_entry_diagnostics(hass, entry)
         catalog = diag["catalog"]
         assert catalog["raw_reads"] == {"root": "00ff"}
-        assert [d["runtime_type_code"] for d in catalog["unsupported_runtime_devices"]] == ["0x0d31"]
+        assert [d["runtime_type_code"] for d in catalog["unsupported_runtime_devices"]] == ["0x0d99"]
 
 
 async def test_migration_drops_slot_identifiers_from_map_devices(hass: HomeAssistant) -> None:
@@ -371,6 +371,7 @@ async def test_no_map_can_continue_with_the_modules_only(hass: HomeAssistant) ->
 
         entry = hass.config_entries.async_entries(DOMAIN)[0]
         assert entry.data["map"]["entries"] == []
+        assert entry.data["program_entities_first"] is True
         assert entry.state is ConfigEntryState.LOADED
 
         from custom_components.epsnet.diagnostics import async_get_config_entry_diagnostics

@@ -1,4 +1,4 @@
-from ..models import RuntimeChannelDefinition, RuntimeModelInfo
+from ..models import RuntimeModelInfo, bit_item
 
 MODEL_INFO = RuntimeModelInfo(
     unit_code=0x0C32,
@@ -7,33 +7,6 @@ MODEL_INFO = RuntimeModelInfo(
     type_key="generic_relay_module",
     subsystem="relay_outputs",
     description="4-channel relay actuator",
-    channels=(
-        *(
-            RuntimeChannelDefinition(
-                role="local_switch",
-                name_template="local_switch_{channel:02d}",
-                channel_index=index + 1,
-                register="X",
-                storage="B",
-                data_type="BOOL",
-                address_offset=0,
-                bit_offset=index,
-            )
-            for index in range(4)
-        ),
-        *(
-            RuntimeChannelDefinition(
-                role="channel_state",
-                name_template="relay_{channel:02d}",
-                channel_index=index + 1,
-                register="Y",
-                storage="B",
-                data_type="BOOL",
-                address_offset=0,
-                bit_offset=index,
-                writable=True,
-            )
-            for index in range(4)
-        ),
-    ),
+    inputs=(bit_item("local_switch", ("SW1", "SW2", "SW3", "SW4"), key_prefix="local"),),
+    outputs=(bit_item("relay", ("RE1", "RE2", "RE3", "RE4"), key_prefix="relay"),),
 )

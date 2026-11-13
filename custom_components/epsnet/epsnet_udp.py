@@ -22,6 +22,12 @@ from .models import (
     ScalarValue,
     ValueKind,
 )
+from .program_layout import (
+    IMAGE_MAGIC,
+    ProgramIoLayout,
+    decode_program_layout,
+    table_checksum,
+)
 from .pubfile import parse_pub_text
 from .runtime_registry import lookup_runtime_model_info
 
@@ -548,6 +554,20 @@ def _parse_discovery_records(
     return tuple(records)
 
 
+def _parse_memory_map(body: bytes) -> tuple[int, ...]:
+    """All memory areas of the root reply: after the identity text, up to 8 × (BE32 address,
+    BE16 length). Unlike the module-scan records, areas outside 0x40xxxxxx are kept."""
+    try:
+        cursor = body.index(0x00, 1) + 1
+    except ValueError:
+        return ()
+    addresses: list[int] = []
+    while cursor + 6 <= len(body) and len(addresses) < _MEMORY_MAP_ENTRIES:
+        addresses.append(int.from_bytes(body[cursor : cursor + 4], byteorder="big"))
+        cursor += 6
+    return tuple(addresses)
+
+
 def _parse_root_body(body: bytes) -> tuple[str, tuple[RuntimeDiscoveryRecord, ...]]:
     if not body:
         raise EpsnetProtocolError("Root discovery reply was empty")
@@ -740,6 +760,50 @@ def _parse_tmodule1(body: bytes) -> tuple[tuple[int, int, int, int, int, int, in
         off_out = int.from_bytes(chunk[14:18], byteorder="little")
         records.append((rack, addr, log_type, in_len, out_len, off_in, off_out))
     return tuple(records)
+
+
+_PROGRAM_IMAGE_ENTRY = 0  # memory-map entries seen on the PLCs tested so far
+_PROGRAM_TABLES_ENTRY = 7
+_MEMORY_MAP_ENTRIES = 8
+_TABLE_AREA_PROBES = 3  # tables checked before a memory area counts as the table area
+
+
+class _SessionProgramSource:
+    """Program image and table area read from PLC memory, in blocks, with a log.
+
+    ``reads`` keeps every block read (area -> offset -> bytes) for diagnostics.
+    """
+
+    def __init__(self, read, image_address: int, table_address: int, table_limit: int) -> None:
+        self._read = read
+        self.image_address = image_address
+        self.table_address = table_address
+        self._table_limit = table_limit
+        self.reads: dict[str, dict[int, bytes]] = {"image": {}, "tables": {}}
+
+    def image(self, offset: int, length: int) -> bytes:
+        data = self._read(self.image_address + offset, length)
+        self.reads["image"][offset] = data
+        return data
+
+    def tables(self, offset: int, length: int) -> bytes:
+        block = _DISCOVERY_MAX_READ_LENGTH
+        blocks = self.reads["tables"]
+        out = bytearray()
+        position = offset
+        while position < offset + length:
+            start = position - position % block
+            if start not in blocks:
+                size = min(block, self._table_limit - start)
+                if size <= 0:
+                    break
+                blocks[start] = self._read(self.table_address + start, size)
+            chunk = blocks[start]
+            out += chunk[position - start : offset + length - start]
+            if len(chunk) < block:
+                break
+            position = start + block
+        return bytes(out)
 
 
 class EpsnetUdpClient:
@@ -1384,6 +1448,10 @@ class EpsnetUdpClient:
                 )
                 devices.extend(enriched_devices)
 
+            program_layout = self._read_program_layout_on_socket(
+                sock, _parse_memory_map(root_body)
+            )
+
         return RuntimeInventory(
             controller_identity=controller_identity,
             root_identity=root_identity,
@@ -1395,7 +1463,92 @@ class EpsnetUdpClient:
             cpu_off_in=cpu_off_in,
             cpu_off_out=cpu_off_out,
             raw_reads=tuple(raw_reads),
+            program_layout=program_layout,
         )
+
+    @staticmethod
+    def _check_table_area(read, token: int, offsets: list[int], limit: int) -> str | None:
+        """None when the first tables at ``token`` are intact, else why not."""
+        if not offsets:
+            return "empty table index"
+        for offset in offsets:
+            try:
+                length = struct.unpack_from(">H", read(token + offset, 2))[0]
+                if not 0 < length <= 4096 or offset + length + 4 > limit:
+                    return f"table at +{offset:#x}: implausible length {length}"
+                body = read(token + offset + 2, length + 2)
+            except EpsnetProtocolError as err:
+                return f"read at +{offset:#x} refused: {err}"
+            if len(body) != length + 2 or struct.unpack_from(
+                ">H", body, length
+            )[0] != table_checksum(length, body[:length]):
+                return f"table at +{offset:#x}: checksum mismatch"
+        return None
+
+    def _read_program_layout_on_socket(
+        self, sock: socket.socket, memory_map: tuple[int, ...]
+    ) -> ProgramIoLayout:
+        """Read the program's I/O configuration in the open session.
+
+        Never fails the scan: any problem becomes the layout's ``error``.
+        """
+
+        def read(address: int, length: int) -> bytes:
+            return self._read_discovery_block_on_socket(sock, token=address, length=length)
+
+        def ordered(first: int, exclude: int | None = None) -> list[int]:
+            tokens = [t for t in memory_map if t and t != exclude]
+            if first < len(memory_map) and memory_map[first] in tokens:
+                tokens.remove(memory_map[first])
+                tokens.insert(0, memory_map[first])
+            return tokens
+
+        try:
+            image_address = header = None
+            for token in ordered(_PROGRAM_IMAGE_ENTRY):
+                try:
+                    candidate = read(token, 0x30)
+                except EpsnetProtocolError:
+                    continue
+                if len(candidate) == 0x30 and struct.unpack_from(">H", candidate)[0] == IMAGE_MAGIC:
+                    image_address, header = token, candidate
+                    break
+            if image_address is None or header is None:
+                return ProgramIoLayout(error="program image not found in the memory map")
+            table_limit = struct.unpack_from(">H", header, 0x26)[0]
+            word_table = struct.unpack_from(">H", header, 0x1A)[0]
+            index = read(image_address + word_table, 2 * _TABLE_AREA_PROBES)
+            probe_offsets = [
+                o for o in struct.unpack_from(f">{len(index) // 2}H", index) if o
+            ][:_TABLE_AREA_PROBES]
+
+            notes: list[str] = []
+            table_address = None
+            for token in ordered(_PROGRAM_TABLES_ENTRY, exclude=image_address):
+                problem = self._check_table_area(read, token, probe_offsets, table_limit)
+                if problem is None:
+                    table_address = token
+                    break
+                notes.append(f"{token:#010x}: {problem}")
+            if table_address is None:
+                return ProgramIoLayout(
+                    image_address=image_address,
+                    error="program table area not found in the memory map",
+                    notes=tuple(notes),
+                )
+
+            source = _SessionProgramSource(read, image_address, table_address, table_limit)
+            layout = decode_program_layout(source)
+            return replace(
+                layout,
+                image_address=image_address,
+                table_address=table_address,
+                reads=source.reads,
+                notes=tuple(notes) + layout.notes,
+            )
+        except (EpsnetError, OSError, ValueError, struct.error) as err:
+            LOGGER.debug("Program layout read failed: %s", err)
+            return ProgramIoLayout(error=f"program read failed: {err}")
 
     def _read_point_values_blocking_on_socket(
         self,

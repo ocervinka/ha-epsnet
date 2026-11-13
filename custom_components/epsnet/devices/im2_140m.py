@@ -1,4 +1,4 @@
-from ..models import RuntimeChannelDefinition, RuntimeModelInfo
+from ..models import ModuleChannel, ModuleItem, RuntimeModelInfo
 
 MODEL_INFO = RuntimeModelInfo(
     unit_code=0x0C25,
@@ -7,17 +7,17 @@ MODEL_INFO = RuntimeModelInfo(
     type_key="generic_input_module",
     subsystem="digital_inputs",
     description="14-channel digital input module",
-    channels=tuple(
-        RuntimeChannelDefinition(
-            role="input_channel",
-            name_template="input_{channel:02d}",
-            channel_index=index + 1,
-            register="X",
-            storage="B",
-            data_type="BOOL",
-            address_offset=index // 8,
-            bit_offset=index % 8,
-        )
-        for index in range(14)
+    # one 24-bit item: inputs in bits 0-13, tamper contacts in bits 17-23
+    inputs=(
+        ModuleItem(
+            tuple(
+                ModuleChannel(key=f"input_in{i}", label=f"IN{i}", role="input", bit=i - 1)
+                for i in range(1, 15)
+            )
+            + tuple(
+                ModuleChannel(key=f"tamper_{i}", label=f"TAMPER{i}", role="tamper", bit=16 + i)
+                for i in range(1, 8)
+            )
+        ),
     ),
 )

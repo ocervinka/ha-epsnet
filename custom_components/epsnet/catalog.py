@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from functools import cmp_to_key, lru_cache
 import re
 
+from .program_entities import build_program_entities
 from .runtime_registry import RUNTIME_MODEL_INFOS_BY_CODE
 from .models import (
     AddressRange,
@@ -863,7 +864,10 @@ def _build_pub_entity_specs(
 
 
 def build_catalog(
-    entries: tuple[PubEntry, ...], runtime_inventory: RuntimeInventory
+    entries: tuple[PubEntry, ...],
+    runtime_inventory: RuntimeInventory,
+    *,
+    program_first: bool = False,
 ) -> EntityCatalog:
     """Build the supported Home Assistant entity and device catalog.
 
@@ -943,6 +947,52 @@ def build_catalog(
             discovery_source="epsnet_runtime_only",
         )
 
+    # Channels placed by the PLC program's own I/O layout that the map lacks
+    # (all of them when there is no map).
+    layout = runtime_inventory.program_layout
+    if program_first and entries and layout is not None and not layout.error:
+        # The entry was set up without a map, so its entities are the program's
+        # (keyed by hardware). A map added later must not replace them: it names
+        # them, and adds what the program alone cannot do (lights / switches).
+        devices_by_key, entities = _keep_runtime_device_keys(devices_by_key, entities)
+        by_address = {
+            _state_address(entries_by_name, spec): spec
+            for spec in reversed(entities)
+            if spec.platform in ("binary_sensor", "sensor")
+        }
+        program = build_program_entities(
+            layout,
+            runtime_inventory.devices,
+            devices_by_key,
+            entries,
+            keep_named={address: spec.name for address, spec in by_address.items()},
+        )
+        # A map entity reading a byte the program already places is replaced by
+        # the program's entity (also the map's whole-byte flags without a bit).
+        placed = {program.entries[spec.state_name] for spec in program.specs}
+        placed_bytes = {(e.register, e.address) for e in placed}
+        entities = tuple(
+            spec
+            for spec in entities
+            if not (
+                spec.platform in ("binary_sensor", "sensor")
+                and _state_address(entries_by_name, spec)[:2] in placed_bytes
+            )
+        )
+    else:
+        program = build_program_entities(
+            layout,
+            runtime_inventory.devices,
+            devices_by_key,
+            entries,
+            shown=tuple(entries_by_name[spec.state_name] for spec in entities),
+            shown_devices={spec.device_key for spec in entities if spec.device_key},
+        )
+    devices_by_key.update(program.devices)
+    entries_by_name.update(program.entries)
+    entities = entities + tuple(program.specs)
+    state_names = tuple(dict.fromkeys(entity.state_name for entity in entities))
+
     entity_keys_by_device: dict[str, list[str]] = defaultdict(list)
     for entity in entities:
         if entity.device_key is not None:
@@ -966,11 +1016,33 @@ def build_catalog(
         unmatched_runtime_devices=unmatched_runtime_devices,
         unmatched_pub_devices=unmatched_pub_devices,
         unsupported_runtime_devices=unsupported_runtime_devices,
+        program_report=tuple(program.report),
     )
 
 
+def _state_address(entries_by_name, spec) -> tuple[str, int, int | None]:
+    entry = entries_by_name[spec.state_name]
+    return entry.register, entry.address, entry.bit
+
+
+def _keep_runtime_device_keys(devices_by_key, entities):
+    """Identify map devices by their module slot, as before the map existed."""
+    renamed = {
+        key: device.runtime_registry_key
+        for key, device in devices_by_key.items()
+        if device.runtime_group_token is not None and device.discovery_source != "epsnet_runtime_only"
+    }
+    devices = {renamed.get(key, key): replace(device, key=renamed.get(key, key))
+               for key, device in devices_by_key.items()}
+    specs = tuple(
+        replace(spec, device_key=renamed.get(spec.device_key, spec.device_key))
+        for spec in entities
+    )
+    return devices, specs
+
+
 def unsupported_module_summary(catalog: EntityCatalog) -> tuple[int, str]:
-    """Return (count, "0x0d31 ×11, 0x0c38") for modules with no definition yet."""
+    """Return (count, "0x0d99 ×11, 0x0c38") for modules with no definition yet."""
     counts = Counter(
         device.runtime_type_code for device in catalog.unsupported_runtime_devices
     )

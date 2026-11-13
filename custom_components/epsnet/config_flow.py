@@ -24,6 +24,7 @@ from .const import (
     CONF_HOST,
     CONF_LOCAL_PORT,
     CONF_MAP,
+    CONF_PROGRAM_FIRST,
     CONF_MAP_FILE,
     CONF_NAME,
     CONF_PORT,
@@ -345,6 +346,8 @@ class EpsnetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             await self._async_close_client()
             data = {**self._data, CONF_MAP: freeze_setup(result)}
+            if not result.entries:
+                data[CONF_PROGRAM_FIRST] = True
             return self.async_create_entry(title=self._data[CONF_NAME], data=data)
 
         from .catalog import unsupported_module_summary
