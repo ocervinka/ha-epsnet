@@ -137,6 +137,44 @@ def _async_update_no_map_issue(
     )
 
 
+def _async_remove_stale_program_entities(hass, entry, catalog: EntityCatalog) -> None:
+    """Drop registry entries of program-placed entities the catalog no longer has.
+
+    A channel loses its program entity when a map entity starts showing it (a
+    corrected ``.pub``) or when the program no longer places it. Only done when
+    the whole layout was read, so a failed read never removes anything.
+    """
+    from homeassistant.helpers import entity_registry as er
+
+    from .program_entities import PROGRAM_ENTITY_PREFIX
+
+    layout = catalog.runtime_inventory.program_layout
+    if layout is None or layout.error or any(m.error for m in layout.masters):
+        return
+    registry = er.async_get(hass)
+    prefix = f"{entry.entry_id}_{PROGRAM_ENTITY_PREFIX}"
+    current = {f"{entry.entry_id}_{spec.key}" for spec in catalog.entities}
+    for item in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if item.unique_id.startswith(prefix) and item.unique_id not in current:
+            LOGGER.info("Removing %s: its channel is no longer placed from the program", item.entity_id)
+            registry.async_remove(item.entity_id)
+
+
+def _log_shared_addresses(entry) -> None:
+    from .diagnostics import map_shared_addresses
+
+    shared = map_shared_addresses(entry.data.get(CONF_MAP))
+    if shared:
+        LOGGER.warning(
+            "%s: %d input/output bit(s) have more than one name in the variable map "
+            "(e.g. %s: %s); those entities show the same channel. Check the .pub export",
+            entry.title,
+            len(shared),
+            shared[0]["address"],
+            ", ".join(shared[0]["pub_entries"]),
+        )
+
+
 def _async_update_unsupported_issue(hass, entry, catalog: EntityCatalog) -> None:
     """Raise (or clear) a Repairs notice listing modules with no definition yet.
 
@@ -302,6 +340,8 @@ async def async_setup_entry(hass, entry) -> bool:
             program_first=bool(entry.data.get(CONF_PROGRAM_FIRST)),
         )
         _async_update_unsupported_issue(hass, entry, catalog)
+        _async_remove_stale_program_entities(hass, entry, catalog)
+        _log_shared_addresses(entry)
         _async_update_no_map_issue(hass, entry, catalog, has_map=bool(entries))
         if entries and not catalog.devices_by_key:
             LOGGER.warning(

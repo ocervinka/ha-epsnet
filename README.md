@@ -98,7 +98,13 @@ lights and switches you can control. Modules on a CPU's internal bus (not CIB) a
 
 With a map, the channels none of its entities shows (e.g. tamper contacts, status flags, the
 relay modules' local switches, the physical output states) are added as well, disabled — enable
-the ones you want. Disabled entities are not read from the PLC.
+the ones you want. Disabled entities are not read from the PLC. When a re-imported map starts
+showing such a channel, or the program stops placing it, its extra entity is removed.
+
+If two map variables point at the same input or output bit, the log warns at startup and the
+diagnostics list them: it is usually an export mistake (e.g. a 12-relay module's relays 9–12 given
+the byte of relays 1–4), and the entity of one shows the other channel. Export the `.pub` again
+or fix it, then re-import it.
 
 When the PLC gets a new program, the integration notices (the program checksum changes), waits
 until the programming tool is done, and reads the I/O configuration again; if it changed, the
@@ -134,7 +140,8 @@ language, copy `en.json` to `<language code>.json` and translate the values.
 modules and their type codes, how they matched the published variables, unsupported modules, the
 raw discovery reads, the full stored variable map (one line per variable, as in the `.pub`), the
 program checksum the PLC reports, the I/O configuration read from the program (with the raw bytes)
-and, with a map, a check of every map variable against it. To post the file publicly, turn on *Configure → Polling intervals and diagnostics →
+and, with a map, a check of every map variable against it plus the input/output bits that more
+than one map variable points at. To post the file publicly, turn on *Configure → Polling intervals and diagnostics →
 Hide variable names in diagnostics*: your own words in the names become placeholders (`w1`, `w2`…),
 consistently, so the structure stays readable. The same catalog (without the raw reads) is also written at startup to
 `epsnet/<entry_id>_merged_catalog.yaml` in the Home Assistant config directory.

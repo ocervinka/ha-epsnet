@@ -332,3 +332,49 @@ def test_room_controller_variants(conv_in, raw_in, expected):
     assert len(buttons) == 5
     assert all(e.platform != "sensor" or e.device_class in ("temperature", "humidity")
                for e in entities.values())
+
+
+def test_diagnostics_list_bits_two_map_variables_share():
+    from custom_components.epsnet.diagnostics import map_shared_addresses
+
+    blob = {"entries": [
+        {"name": "relay_1", "register": "Y", "address": 0, "bit": 0},
+        {"name": "relay_9", "register": "Y", "address": 0, "bit": 0},  # belongs on Y1.0
+        {"name": "relay_2", "register": "Y", "address": 0, "bit": 1},
+        {"name": "whole_byte", "register": "Y", "address": 0, "bit": None},
+        {"name": "flag_a", "register": "R", "address": 5, "bit": 0},
+        {"name": "flag_b", "register": "R", "address": 5, "bit": 0},
+    ]}
+    assert map_shared_addresses(blob) == [{"address": "Y0.0", "pub_entries": ["relay_1", "relay_9"]}]
+    assert map_shared_addresses(None) == []
+
+
+@pytest.mark.asyncio
+async def test_program_entities_no_longer_placed_leave_the_registry(hass):
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.epsnet import _async_remove_stale_program_entities
+    from custom_components.epsnet.const import DOMAIN
+
+    entry = MockConfigEntry(domain=DOMAIN, data={})
+    entry.add_to_hass(hass)
+    registry = er.async_get(hass)
+    catalog = build_catalog((), _inventory(_layout(HOUSE), [WSB, RELAY, DIMMER]))
+
+    def add(key):
+        return registry.async_get_or_create(
+            "binary_sensor", DOMAIN, f"{entry.entry_id}_{key}", config_entry=entry).entity_id
+
+    kept = add("io_0_2_3151_2b3c_relay_re1")
+    gone = add("io_0_2_3151_2b3c_relay_re13")
+    map_entity = add("hall_light")  # not from the program: never touched
+    broken = replace(catalog, runtime_inventory=replace(
+        catalog.runtime_inventory,
+        program_layout=replace(catalog.runtime_inventory.program_layout, error="not readable")))
+
+    _async_remove_stale_program_entities(hass, entry, broken)
+    assert registry.async_get(gone) is not None  # a failed read removes nothing
+    _async_remove_stale_program_entities(hass, entry, catalog)
+    assert registry.async_get(gone) is None
+    assert registry.async_get(kept) is not None and registry.async_get(map_entity) is not None

@@ -85,7 +85,13 @@ Moduly na interní sběrnici CPU (ne CIB) zahrnuté nejsou.
 
 S mapou se přidají i kanály, které žádná z jejích entit nezobrazuje (např. sabotážní kontakty,
 stavové příznaky, místní tlačítka reléových modulů, fyzické stavy výstupů), vypnuté — zapněte ty,
-které chcete. Vypnuté entity se z PLC nečtou.
+které chcete. Vypnuté entity se z PLC nečtou. Když takový kanál začne zobrazovat entita znovu
+načtené mapy, nebo ho program přestane umisťovat, jeho přidaná entita se odstraní.
+
+Pokud na stejný vstupní nebo výstupní bit ukazují dvě proměnné mapy, integrace na to při startu
+upozorní v logu a diagnostika je vypíše: obvykle jde o chybu exportu (např. relé 9–12 modulu
+s 12 relé dostala bajt relé 1–4) a entita jedné z nich ukazuje kanál té druhé. Soubor `.pub`
+exportujte znovu nebo ho opravte a znovu ho načtěte.
 
 Když PLC dostane nový program, integrace to pozná (změní se kontrolní součet programu), počká,
 až programovací nástroj skončí, a konfiguraci I/O přečte znovu; pokud se změnila, integrace se

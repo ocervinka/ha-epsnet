@@ -313,7 +313,7 @@ _SHORT_CODE = re.compile(r"[A-Za-z]{1,3}\d+[A-Za-z]?")
 _TOKEN = re.compile(r"[A-Za-z0-9]+")
 _NAME_KEYS = frozenset({
     "entries", "entry_names", "entity_keys", "device_key", "device_name", "registry_keys",
-    "pub_entry",
+    "pub_entry", "pub_entries",
 })
 
 
@@ -374,6 +374,30 @@ def program_layout_vs_map(layout, blob: object) -> dict[str, object] | None:
     return cross_check(layout, list(blob["entries"]))
 
 
+def map_shared_addresses(blob: object) -> list[dict[str, object]]:
+    """X/Y bits that more than one variable of the stored map points at.
+
+    Two names on one input or output bit are usually an export mistake (for
+    example the upper relays of a module given the lower relays' byte), so the
+    entity of one of them shows the other channel's state.
+    """
+    if not isinstance(blob, dict):
+        return []
+    by_bit: dict[tuple[str, int, int], list[str]] = {}
+    for entry in blob.get("entries") or ():
+        if not isinstance(entry, dict) or entry.get("register") not in ("X", "Y"):
+            continue
+        if entry.get("bit") is None:
+            continue
+        key = (str(entry["register"]), int(entry["address"]), int(entry["bit"]))
+        by_bit.setdefault(key, []).append(str(entry.get("name")))
+    return [
+        {"address": f"{zone}{address}.{bit}", "pub_entries": names}
+        for (zone, address, bit), names in sorted(by_bit.items())
+        if len(names) > 1
+    ]
+
+
 async def _read_program_checksum(client) -> str | None:
     from .program_watch import read_program_checksum
 
@@ -415,6 +439,7 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict[str, object]:
         "program_layout_vs_map": program_layout_vs_map(
             runtime.catalog.runtime_inventory.program_layout, entry.data.get(CONF_MAP)
         ),
+        "map_shared_addresses": map_shared_addresses(entry.data.get(CONF_MAP)),
         "catalog": build_catalog_snapshot(
             runtime.catalog,
             host=str(entry.data.get(CONF_HOST)),

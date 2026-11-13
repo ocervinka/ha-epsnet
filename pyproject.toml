@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ha-epsnet"
-version = "0.5.0"
+version = "0.5.1"
 description = "Home Assistant custom component for Tecomat/iNELS EPSNET runtime-discovered integrations"
 readme = "README.md"
 requires-python = ">=3.12"
