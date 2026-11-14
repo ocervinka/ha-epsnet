@@ -28,97 +28,6 @@ def _register_package(monkeypatch: pytest.MonkeyPatch, package_name: str) -> Non
     monkeypatch.setitem(sys.modules, package_name, package)
 
 
-def _install_voluptuous_stub(monkeypatch: pytest.MonkeyPatch) -> None:
-    voluptuous = types.ModuleType("voluptuous")
-
-    class Invalid(Exception):
-        pass
-
-    missing = object()
-
-    class _Marker:
-        def __init__(self, key: str, *, default=missing, required: bool) -> None:
-            self.key = key
-            self.default = default
-            self.required = required
-
-        def __hash__(self) -> int:
-            return hash((self.key, self.required))
-
-    def Required(key: str, default=missing) -> _Marker:
-        return _Marker(key, default=default, required=True)
-
-    def Optional(key: str, default=missing) -> _Marker:
-        return _Marker(key, default=default, required=False)
-
-    def Coerce(type_):
-        def validator(value):
-            try:
-                return type_(value)
-            except Exception as err:  # pragma: no cover - simple stub
-                raise Invalid(str(err)) from err
-
-        return validator
-
-    def Range(*, min=None, max=None):
-        def validator(value):
-            if min is not None and value < min:
-                raise Invalid(f"Value {value} is smaller than {min}")
-            if max is not None and value > max:
-                raise Invalid(f"Value {value} is larger than {max}")
-            return value
-
-        return validator
-
-    def All(*validators):
-        def validator(value):
-            current = value
-            for item in validators:
-                current = item(current)
-            return current
-
-        return validator
-
-    class Schema:
-        def __init__(self, schema_dict):
-            self.schema_dict = schema_dict
-
-        def __call__(self, data):
-            validated = {}
-            for marker, validator in self.schema_dict.items():
-                key = marker.key if isinstance(marker, _Marker) else marker
-                default = marker.default if isinstance(marker, _Marker) else missing
-                required = marker.required if isinstance(marker, _Marker) else True
-
-                if key in data:
-                    value = data[key]
-                elif default is not missing:
-                    value = default
-                elif required:
-                    raise Invalid(f"Missing required key: {key}")
-                else:
-                    continue
-
-                if validator is str:
-                    if not isinstance(value, str):
-                        raise Invalid(f"Expected string for {key}")
-                    validated[key] = value
-                    continue
-
-                validated[key] = validator(value)
-
-            return validated
-
-    voluptuous.All = All
-    voluptuous.Coerce = Coerce
-    voluptuous.Invalid = Invalid
-    voluptuous.Optional = Optional
-    voluptuous.Range = Range
-    voluptuous.Required = Required
-    voluptuous.Schema = Schema
-    monkeypatch.setitem(sys.modules, "voluptuous", voluptuous)
-
-
 def _install_homeassistant_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     homeassistant = types.ModuleType("homeassistant")
     homeassistant.__path__ = []
@@ -131,83 +40,6 @@ def _install_homeassistant_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     helpers = types.ModuleType("homeassistant.helpers")
     helpers.__path__ = []
     monkeypatch.setitem(sys.modules, "homeassistant.helpers", helpers)
-
-
-def _load_config_flow_module(monkeypatch: pytest.MonkeyPatch):
-    package_name = "epsnet_testpkg_config"
-    _register_package(monkeypatch, package_name)
-    _install_homeassistant_stubs(monkeypatch)
-    _install_voluptuous_stub(monkeypatch)
-
-    config_entries = types.ModuleType("homeassistant.config_entries")
-
-    class ConfigFlow:
-        def __init_subclass__(cls, **kwargs) -> None:
-            return None
-
-        def async_show_form(self, *, step_id, data_schema, errors):
-            return {
-                "type": "form",
-                "step_id": step_id,
-                "data_schema": data_schema,
-                "errors": errors,
-            }
-
-        def async_create_entry(self, *, title, data):
-            return {"type": "create_entry", "title": title, "data": data}
-
-    class OptionsFlow:
-        def __init_subclass__(cls, **kwargs) -> None:
-            return None
-
-    config_entries.ConfigFlow = ConfigFlow
-    config_entries.OptionsFlow = OptionsFlow
-    config_entries.ConfigEntry = object
-    monkeypatch.setitem(sys.modules, "homeassistant.config_entries", config_entries)
-
-    data_entry_flow = types.ModuleType("homeassistant.data_entry_flow")
-    data_entry_flow.FlowResult = dict
-
-    class FlowResultType:
-        SHOW_PROGRESS = "show_progress"
-
-    data_entry_flow.FlowResultType = FlowResultType
-    monkeypatch.setitem(sys.modules, "homeassistant.data_entry_flow", data_entry_flow)
-
-    epsnet_udp = types.ModuleType(f"{package_name}.epsnet_udp")
-
-    class EpsnetError(Exception):
-        pass
-
-    class PlcBusyError(EpsnetError):
-        pass
-
-    epsnet_udp.EpsnetError = EpsnetError
-    epsnet_udp.PlcBusyError = PlcBusyError
-    epsnet_udp.EpsnetUdpClient = object
-    monkeypatch.setitem(sys.modules, f"{package_name}.epsnet_udp", epsnet_udp)
-
-    map_sources = types.ModuleType(f"{package_name}.map_sources")
-    map_sources.SetupResult = object
-    map_sources.freeze_setup = lambda result: {}
-    map_sources.run_setup = lambda *args, **kwargs: None
-    monkeypatch.setitem(sys.modules, f"{package_name}.map_sources", map_sources)
-
-    models = types.ModuleType(f"{package_name}.models")
-    models.PubEntry = object
-    monkeypatch.setitem(sys.modules, f"{package_name}.models", models)
-
-    pubfile = types.ModuleType(f"{package_name}.pubfile")
-
-    class PubFileParseError(Exception):
-        pass
-
-    pubfile.PubFileParseError = PubFileParseError
-    pubfile.load_pub_entries = lambda path: ()
-    monkeypatch.setitem(sys.modules, f"{package_name}.pubfile", pubfile)
-
-    _load_module(f"{package_name}.const", EPSNET_DIR / "const.py")
-    return _load_module(f"{package_name}.config_flow", EPSNET_DIR / "config_flow.py")
 
 
 def _load_coordinator_module(monkeypatch: pytest.MonkeyPatch):
@@ -365,40 +197,6 @@ def _load_init_module(monkeypatch: pytest.MonkeyPatch):
     sys.modules[package_name] = module
     spec.loader.exec_module(module)
     return module
-
-
-@pytest.mark.asyncio
-async def test_config_flow_accepts_millisecond_scan_interval(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config_flow = _load_config_flow_module(monkeypatch)
-    assert config_flow.DEFAULT_SCAN_INTERVAL == 500
-    flow = config_flow.EpsnetConfigFlow()
-    result = await flow.async_step_user()
-    schema = result["data_schema"]
-
-    validated = schema(
-        {
-            config_flow.CONF_NAME: "EPSNET",
-            config_flow.CONF_HOST: "192.0.2.10",
-            config_flow.CONF_PORT: 61682,
-            config_flow.CONF_LOCAL_PORT: 61681,
-            config_flow.CONF_SCAN_INTERVAL: 200,
-        }
-    )
-
-    assert validated[config_flow.CONF_SCAN_INTERVAL] == 200
-
-    with pytest.raises(config_flow.vol.Invalid):
-        schema(
-            {
-                config_flow.CONF_NAME: "EPSNET",
-                config_flow.CONF_HOST: "192.0.2.10",
-                config_flow.CONF_PORT: 61682,
-                config_flow.CONF_LOCAL_PORT: 61681,
-                    config_flow.CONF_SCAN_INTERVAL: 300_001,
-            }
-        )
 
 
 class _FakeHandle:
@@ -596,6 +394,31 @@ def test_poll_metrics_publish_smoothed_read_and_cycle_durations(
     assert coordinator.poll_metrics.average_cycle_duration_ms == pytest.approx(2_640.0)
     assert coordinator.poll_metrics.minimum_cycle_duration_ms == pytest.approx(6_000.0)
     assert coordinator.poll_metrics.maximum_cycle_duration_ms == pytest.approx(6_000.0)
+
+
+def test_current_timing_waits_until_the_averages_have_settled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Client:
+        last_read_metrics = None  # read time = the poll's own duration
+
+    coordinator, _ = _build_coordinator(
+        monkeypatch, scan_interval_milliseconds=500, client=_Client()
+    )
+    assert coordinator.current_timing_ms is None
+
+    # A slow first read weighs on the averages for a while: nothing is shown.
+    coordinator._record_poll_metrics(poll_started=10.0, poll_finished=13.0)
+    for step in range(1, 19):
+        started = 12.9 + step * 0.6
+        coordinator._record_poll_metrics(poll_started=started, poll_finished=started + 0.1)
+        assert coordinator.current_timing_ms is None
+
+    for step in range(19, 40):
+        started = 12.9 + step * 0.6
+        coordinator._record_poll_metrics(poll_started=started, poll_finished=started + 0.1)
+    read, cycle = coordinator.current_timing_ms
+    assert read == pytest.approx(100, abs=5) and cycle == pytest.approx(600, abs=5)
 
 
 @pytest.mark.asyncio

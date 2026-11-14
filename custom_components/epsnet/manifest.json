@@ -1,12 +1,19 @@
 {
   "domain": "epsnet",
-  "name": "EPSNET",
+  "name": "Teco Foxtrot / iNELS 2 (EPSNET)",
   "codeowners": [
     "@ocervinka"
   ],
   "config_flow": true,
   "dependencies": [
-    "file_upload"
+    "file_upload",
+    "http",
+    "network"
+  ],
+  "dhcp": [
+    {
+      "macaddress": "000A14*"
+    }
   ],
   "documentation": "https://github.com/ocervinka/ha-epsnet",
   "integration_type": "hub",
@@ -16,5 +23,5 @@
     "custom_components.epsnet"
   ],
   "requirements": [],
-  "version": "0.5.3"
+  "version": "0.6.0"
 }

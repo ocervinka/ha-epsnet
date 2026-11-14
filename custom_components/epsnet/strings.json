@@ -1,179 +1,276 @@
 {
   "config": {
+    "flow_title": "{name}",
     "step": {
       "user": {
-        "title": "Set up EPSNET",
-        "description": "Enter how to reach the PLC over EPSNET UDP. The published-variable map is discovered in the next step.",
+        "title": "Connect to your PLC",
+        "description": "Choose a PLC found on your network, or enter its address yourself.",
         "data": {
-          "name": "Name",
-          "host": "PLC host",
-          "port": "PLC port",
-          "local_port": "Local UDP source port",
-          "scan_interval": "Scan interval after each poll (milliseconds, 0 = immediate)"
+          "plc": "PLC"
+        },
+        "submit": "Connect"
+      },
+      "manual": {
+        "title": "Connect to your PLC",
+        "description": "Enter the address of the PLC. The automatic search only finds PLCs on the same network as Home Assistant.",
+        "data": {
+          "host": "PLC address"
         },
         "data_description": {
-          "scan_interval": "Pause after each full read of the PLC's values. Default 500; 0 starts the next read immediately. The fast lane for buttons is under Configure once set up."
+          "host": "IP address or host name, for example 192.168.1.50."
+        },
+        "submit": "Connect",
+        "sections": {
+          "advanced": {
+            "name": "Advanced",
+            "data": {
+              "port": "PLC port",
+              "local_port": "Local UDP port"
+            },
+            "data_description": {
+              "port": "UDP port of the PLC. Default 61682.",
+              "local_port": "UDP port Home Assistant sends from. Default 61681; 0 lets the system choose."
+            }
+          }
         }
       },
-      "source": {
-        "title": "Choose the variable map source",
-        "description": "Discover the published-variable map straight from the PLC (recommended), or upload an exported .pub file.",
-        "menu_options": {
-          "discover": "Discover from the PLC (recommended)",
-          "upload": "Upload a .pub file"
-        }
+      "discovery_confirm": {
+        "title": "Add this PLC?",
+        "description": "{ident} at {host}.\n\nHome Assistant will read its modules and variable names.",
+        "submit": "Add"
+      },
+      "run": {
+        "title": "Connect to your PLC"
       },
       "upload": {
-        "title": "Upload a .pub file",
-        "description": "Upload an exported .pub / .piz / .zip map. The PLC is still scanned live to match the map to real devices.",
+        "title": "Upload the .pub file",
+        "description": "Upload the `.pub` file that belongs to the program running in the PLC. A `.piz` or `.zip` that contains it works too.\n\nMosaic writes the file into the project folder when it compiles the program, provided Project manager → Sw → Export files → Assembler (.pub) is enabled.",
         "data": {
-          "map_file": "Exported map file"
+          "map_file": "Choose file"
+        },
+        "submit": "Upload"
+      },
+      "no_map": {
+        "title": "This PLC stores no variable names",
+        "description": "{modules} modules were found, but this PLC does not store its program's `.pub` file, the list of the program's variables. Without it, Home Assistant:\n\n- **cannot switch anything.** It only shows states: what is on, temperatures, button presses.\n- **does not know your names.** Everything is named by module type and bus address.\n\nYou can also add the file later under Configure: entities created now keep their history, get your names, and control is added.",
+        "menu_options": {
+          "upload": "Upload the .pub file",
+          "inventory_only": "Continue without it"
+        },
+        "menu_option_descriptions": {
+          "upload": "Your own names and control from the start.",
+          "inventory_only": "States only for now. Add the file later under Configure."
         }
       },
-      "confirm": {
-        "title": "Confirm EPSNET setup",
-        "description": "Map source: {source}\nPLC identity: {ident}\nDevices: {devices}\nPublished points: {points}\n\nCreate this integration?"
+      "busy": {
+        "title": "The PLC is in use",
+        "description": "Another program is connected to the PLC, for example the programming tool, and the variable names cannot be read meanwhile. Close it, then try again.",
+        "menu_options": {
+          "retry": "Try again",
+          "upload": "Upload the .pub file instead"
+        }
       },
-      "confirm_unsupported": {
-        "title": "Confirm EPSNET setup",
-        "description": "Map source: {source}\nPLC identity: {ident}\nDevices: {devices}\nPublished points: {points}\n\n⚠️ {unsupported_count} module(s) on the PLC bus are not supported yet ({unsupported_codes}). They will get no entities. Please help add them: after setup, open the integration, choose ⋮ → Download diagnostics and attach the file to an issue at {issue_url}.\n\nCreate this integration?"
+      "file_no_match": {
+        "title": "The file matches none of the modules",
+        "description": "{modules} modules were found, but no variable in the file belongs to any of them. It is most likely the `.pub` of another project.",
+        "menu_options": {
+          "upload": "Upload another file",
+          "use_file": "Use this file anyway"
+        },
+        "menu_option_descriptions": {
+          "use_file": "Home Assistant will only show states, under generic names, and cannot switch anything. The file's variables are kept and included in diagnostics, which helps add support for programs with their own naming."
+        }
       },
       "reconfigure": {
-        "title": "Reconfigure EPSNET connection",
-        "description": "Change how Home Assistant reaches the PLC. The stored variable map is kept; use Configure → Re-import to refresh it.",
+        "title": "Change the PLC connection",
+        "description": "Change how Home Assistant reaches the PLC. The stored variable names are kept; to refresh them use Configure → Reload variable names from the PLC.",
         "data": {
-          "host": "PLC host",
+          "host": "PLC address",
           "port": "PLC port",
-          "local_port": "Local UDP source port"
-        }
-      },
-      "source_plc_busy": {
-        "title": "Choose the variable map source",
-        "description": "Discover the published-variable map straight from the PLC (recommended), or upload an exported .pub file.\n\n⚠️ The PLC is busy (its exclusive session is held, e.g. by FoxTool). Close other tools and try again.",
-        "menu_options": {
-          "discover": "Discover from the PLC (recommended)",
-          "upload": "Upload a .pub file"
-        }
-      },
-      "source_cannot_connect": {
-        "title": "Choose the variable map source",
-        "description": "Discover the published-variable map straight from the PLC (recommended), or upload an exported .pub file.\n\n⚠️ Could not reach the PLC. Check the host and ports, then try again — or upload a .pub file instead.",
-        "menu_options": {
-          "discover": "Discover from the PLC (recommended)",
-          "upload": "Upload a .pub file"
-        }
-      },
-      "source_no_map": {
-        "title": "Choose the variable map source",
-        "description": "Discover the published-variable map straight from the PLC (recommended), or upload an exported .pub file.\n\n⚠️ The PLC holds no published-variable map (no .pub was stored in it — e.g. a program loaded from Mosaic). Upload the .pub file from your project instead; in Mosaic, enable it under Project manager → Sw → Export files → Assembler (.pub) and rebuild. If you don't have the .pub at hand, you can continue without it: the modules' inputs and outputs are then read from the PLC program where possible and shown read-only, named by module type and bus address.",
-        "menu_options": {
-          "discover": "Discover from the PLC (recommended)",
-          "upload": "Upload a .pub file",
-          "inventory_only": "Continue without a .pub file (read-only, generic names)"
+          "local_port": "Local UDP port"
         }
       }
     },
     "progress": {
-      "run_setup": "Connecting to the PLC and reading the variable map… {progress}"
+      "connect": "Connecting to the PLC at {host}…",
+      "read_names": "Connected to {ident}.\n\n{modules} modules found.\n\nReading variable names… {progress}",
+      "match_file": "Matching the file to the PLC's modules…"
     },
     "error": {
-      "invalid_host": "Enter the PLC host or IP address.",
+      "invalid_host": "Enter the address of the PLC.",
       "path_not_found": "The uploaded file could not be read.",
-      "invalid_pub": "The uploaded file could not be parsed as a .pub map.",
-      "cannot_connect": "Could not reach the PLC. Check the host and ports.",
-      "plc_busy": "The PLC is busy (its exclusive session is held, e.g. by FoxTool). Close other tools and try again."
+      "invalid_pub": "The uploaded file is not a valid .pub file.",
+      "cannot_connect": "No answer from the PLC at this address. Check the address and that the PLC is switched on."
     },
     "abort": {
-      "already_configured": "This EPSNET device is already configured.",
-      "reconfigure_successful": "EPSNET connection updated."
+      "already_configured": "This PLC is already set up.",
+      "already_in_progress": "Setting up this PLC is already in progress.",
+      "reconfigure_successful": "The connection was updated.",
+      "no_plc": "No PLC answered at this address."
+    },
+    "create_entry": {
+      "with_names": "{modules} modules and {variables} variables are set up.",
+      "read_only": "{modules} modules are set up. Home Assistant shows their states but cannot switch anything yet, and names them by module type and bus address.\n\nTo control them and get your own names, add the program's `.pub` file: Configure → Load variable names from a .pub file. Entities keep their history.",
+      "with_names_unsupported": "{modules} modules and {variables} variables are set up.\n\n{unsupported_count} of the modules are not supported yet ({unsupported_codes}) and have no entities. Settings → Repairs explains how to help add them.",
+      "read_only_unsupported": "{modules} modules are set up. Home Assistant shows their states but cannot switch anything yet, and names them by module type and bus address.\n\nTo control them and get your own names, add the program's `.pub` file: Configure → Load variable names from a .pub file. Entities keep their history.\n\n{unsupported_count} of the modules are not supported yet ({unsupported_codes}) and have no entities. Settings → Repairs explains how to help add them."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "EPSNET",
-        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n**Re-import the variable map** after changing the PLC program, so Home Assistant reads and switches the right variables. Entities keep their IDs.\n- **From the PLC** reads the map stored in the PLC together with the program.\n- **From a file** uploads the `.pub` exported with the program. Use it when the PLC stores no map, or an old one.\n\n**Polling intervals and diagnostics** set how often values are read from the PLC, and whether variable names are hidden in the diagnostics download.",
+        "title": "PLC settings",
+        "description": "{modules} modules · {variables} variables",
         "menu_options": {
-          "reimport_plc": "Re-import the variable map from the PLC",
-          "reimport_file": "Re-import the variable map from a file (.pub)",
-          "settings": "Polling intervals and diagnostics"
-        }
-      },
-      "settings": {
-        "title": "Polling intervals and diagnostics",
-        "description": "How often Home Assistant reads values from the PLC. Shorter intervals give faster updates but more network traffic and load on the PLC. Saving reloads the integration.",
-        "data": {
-          "scan_interval": "Pause between full reads (milliseconds)",
-          "fast_scan_interval": "Fast lane for buttons and motion sensors (milliseconds)",
-          "anonymize_diagnostics": "Hide variable names in diagnostics"
+          "reimport_plc": "Reload variable names from the PLC",
+          "reimport_file": "Load variable names from a .pub file",
+          "speed": "Update speed",
+          "diagnostics": "Download diagnostics"
         },
-        "data_description": {
-          "scan_interval": "Each cycle reads every value the integration uses (a few hundred values take about half a second), then waits this long before the next one. Default 500; 0 starts the next read immediately.",
-          "fast_scan_interval": "Reads only the on/off inputs (wall buttons, motion sensors, contacts) on their own short cycle, so a quick button press isn't missed between full reads. 0 = off; 100 is recommended (about 10 small requests per second).",
-          "anonymize_diagnostics": "Replaces the words in your program's variable names (rooms, people…) with placeholders like w1, w2 in ⋮ → Download diagnostics, so you can post the file publicly. The same word always gets the same placeholder, so the file stays useful. Words the integration itself relies on (light, plug, pir, magnet, ON/OFF…) and module codes are kept."
-        }
-      },
-      "reimport_file": {
-        "title": "Re-import from a file",
-        "description": "Upload the `.pub` / `.piz` / `.zip` exported with the program that is running in the PLC now. The PLC's modules are still scanned live to match the map to them. If the file can't be used, the current map is kept.",
-        "data": {
-          "map_file": "Exported map file"
+        "menu_option_descriptions": {
+          "reimport_plc": "After the PLC program was changed. Entities keep their IDs.",
+          "reimport_file": "When the PLC stores no names, or an old version.",
+          "speed": "How often values are read from the PLC.",
+          "diagnostics": "A file describing this installation, for reporting a problem."
         }
       },
       "init_plc_busy": {
-        "title": "EPSNET",
-        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ The PLC is busy (its exclusive session is held). Try again.\n\n**Re-import the variable map** after changing the PLC program, so Home Assistant reads and switches the right variables. Entities keep their IDs.\n- **From the PLC** reads the map stored in the PLC together with the program.\n- **From a file** uploads the `.pub` exported with the program. Use it when the PLC stores no map, or an old one.\n\n**Polling intervals and diagnostics** set how often values are read from the PLC, and whether variable names are hidden in the diagnostics download.",
+        "title": "PLC settings",
+        "description": "⚠️ The PLC is in use: another program is connected to it. Close it and try again.\n\n{modules} modules · {variables} variables",
         "menu_options": {
-          "reimport_plc": "Re-import the variable map from the PLC",
-          "reimport_file": "Re-import the variable map from a file (.pub)",
-          "settings": "Polling intervals and diagnostics"
+          "reimport_plc": "Reload variable names from the PLC",
+          "reimport_file": "Load variable names from a .pub file",
+          "speed": "Update speed",
+          "diagnostics": "Download diagnostics"
+        },
+        "menu_option_descriptions": {
+          "reimport_plc": "After the PLC program was changed. Entities keep their IDs.",
+          "reimport_file": "When the PLC stores no names, or an old version.",
+          "speed": "How often values are read from the PLC.",
+          "diagnostics": "A file describing this installation, for reporting a problem."
         }
       },
       "init_cannot_connect": {
-        "title": "EPSNET",
-        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ Could not reach the PLC to re-import the map.\n\n**Re-import the variable map** after changing the PLC program, so Home Assistant reads and switches the right variables. Entities keep their IDs.\n- **From the PLC** reads the map stored in the PLC together with the program.\n- **From a file** uploads the `.pub` exported with the program. Use it when the PLC stores no map, or an old one.\n\n**Polling intervals and diagnostics** set how often values are read from the PLC, and whether variable names are hidden in the diagnostics download.",
+        "title": "PLC settings",
+        "description": "⚠️ No answer from the PLC, so the variable names were not reloaded.\n\n{modules} modules · {variables} variables",
         "menu_options": {
-          "reimport_plc": "Re-import the variable map from the PLC",
-          "reimport_file": "Re-import the variable map from a file (.pub)",
-          "settings": "Polling intervals and diagnostics"
+          "reimport_plc": "Reload variable names from the PLC",
+          "reimport_file": "Load variable names from a .pub file",
+          "speed": "Update speed",
+          "diagnostics": "Download diagnostics"
+        },
+        "menu_option_descriptions": {
+          "reimport_plc": "After the PLC program was changed. Entities keep their IDs.",
+          "reimport_file": "When the PLC stores no names, or an old version.",
+          "speed": "How often values are read from the PLC.",
+          "diagnostics": "A file describing this installation, for reporting a problem."
         }
       },
       "init_no_map": {
-        "title": "EPSNET",
-        "description": "Source: {source} · PLC: {ident} · {points} points · CRC {crc}\n\n⚠️ The PLC returned no published-variable map; the current map was kept. Re-import it from a file instead.\n\n**Re-import the variable map** after changing the PLC program, so Home Assistant reads and switches the right variables. Entities keep their IDs.\n- **From the PLC** reads the map stored in the PLC together with the program.\n- **From a file** uploads the `.pub` exported with the program. Use it when the PLC stores no map, or an old one.\n\n**Polling intervals and diagnostics** set how often values are read from the PLC, and whether variable names are hidden in the diagnostics download.",
+        "title": "PLC settings",
+        "description": "⚠️ The PLC stores no variable names; the current ones were kept. Load them from a .pub file instead.\n\n{modules} modules · {variables} variables",
         "menu_options": {
-          "reimport_plc": "Re-import the variable map from the PLC",
-          "reimport_file": "Re-import the variable map from a file (.pub)",
-          "settings": "Polling intervals and diagnostics"
+          "reimport_plc": "Reload variable names from the PLC",
+          "reimport_file": "Load variable names from a .pub file",
+          "speed": "Update speed",
+          "diagnostics": "Download diagnostics"
+        },
+        "menu_option_descriptions": {
+          "reimport_plc": "After the PLC program was changed. Entities keep their IDs.",
+          "reimport_file": "When the PLC stores no names, or an old version.",
+          "speed": "How often values are read from the PLC.",
+          "diagnostics": "A file describing this installation, for reporting a problem."
         }
+      },
+      "speed": {
+        "title": "Update speed",
+        "description": "Measured now: a full read of {values} values takes about {read_ms} ms. With the pause below, each of them is refreshed about every {cycle_ms} ms. Saving reloads the integration.",
+        "data": {
+          "scan_interval": "Pause between full reads (ms)",
+          "fast_scan_interval": "Read buttons and motion sensors every (ms)"
+        },
+        "submit": "Save",
+        "data_description": {
+          "scan_interval": "Default 500; 0 starts the next read immediately. A shorter pause gives faster updates but more traffic to the PLC.",
+          "fast_scan_interval": "The {fast_inputs} on/off inputs (wall buttons, motion sensors, contacts) are read separately on their own short cycle, so a quick press is not missed between full reads. 100 is recommended; 0 turns this off."
+        }
+      },
+      "speed_unmeasured": {
+        "title": "Update speed",
+        "description": "How often Home Assistant reads values from the PLC. Saving reloads the integration.",
+        "data": {
+          "scan_interval": "Pause between full reads (ms)",
+          "fast_scan_interval": "Read buttons and motion sensors every (ms)"
+        },
+        "submit": "Save",
+        "data_description": {
+          "scan_interval": "Default 500; 0 starts the next read immediately. A shorter pause gives faster updates but more traffic to the PLC.",
+          "fast_scan_interval": "On/off inputs (wall buttons, motion sensors, contacts) are read separately on their own short cycle, so a quick press is not missed between full reads. 100 is recommended; 0 turns this off."
+        }
+      },
+      "diagnostics": {
+        "title": "Download diagnostics",
+        "description": "The diagnostics file describes the PLC's modules and variables. Attach it when you report a problem or ask for a module to be supported.",
+        "submit": "Continue",
+        "data": {
+          "anonymize_diagnostics": "Hide variable names"
+        },
+        "data_description": {
+          "anonymize_diagnostics": "Replaces the words in your variable names (rooms, people…) with placeholders such as w1, w2, so the file can be shared publicly. Words the integration relies on (light, plug, pir, magnet, ON/OFF…) and module codes are kept. The choice is remembered, also for ⋮ → Download diagnostics."
+        }
+      },
+      "diagnostics_download": {
+        "title": "Download diagnostics",
+        "description": "Your file: {link}\n\nThe link works for 10 minutes.",
+        "submit": "Done"
+      },
+      "reimport_file": {
+        "title": "Load variable names from a file",
+        "description": "Upload the `.pub` file that belongs to the program running in the PLC now. A `.piz` or `.zip` that contains it works too. If the file cannot be used, the current names are kept.",
+        "data": {
+          "map_file": "Choose file"
+        },
+        "submit": "Upload"
+      },
+      "reimport_plc": {
+        "title": "Reload variable names from the PLC"
+      },
+      "reimport_file_run": {
+        "title": "Load variable names from a file"
       }
+    },
+    "progress": {
+      "read_names": "Reading variable names from the PLC… {progress}",
+      "match_file": "Matching the file to the PLC's modules…"
     },
     "error": {
       "path_not_found": "The uploaded file could not be read.",
-      "invalid_pub": "The uploaded file could not be parsed as a .pub map.",
-      "pub_no_match": "The file matches no module found on this PLC — is it from another project? The current map was kept."
-    },
-    "progress": {
-      "run_setup": "Re-reading the variable map from the PLC…",
-      "run_file_setup": "Matching the uploaded map to the PLC's modules…"
+      "invalid_pub": "The uploaded file is not a valid .pub file.",
+      "pub_no_match": "The file matches none of the PLC's modules. Is it from another project? The current names were kept."
+    }
+  },
+  "selector": {
+    "plc": {
+      "options": {
+        "manual": "Enter an address myself"
+      }
     }
   },
   "issues": {
     "map_changed": {
-      "title": "EPSNET PLC program changed",
-      "description": "The PLC's published-variable map changed since the last import (CRC {old_crc} → {new_crc}, {points} points). The new map has been applied. Review your entities and automations in case variable addresses moved."
+      "title": "EPSNET: PLC program changed",
+      "description": "The variable names stored in the PLC changed since they were last loaded ({points} variables now, checksum {old_crc} → {new_crc}). The new names have been applied. Review your entities and automations in case variables moved."
     },
     "unsupported_modules": {
       "title": "EPSNET: PLC modules not supported yet",
-      "description": "{count} module(s) on the PLC bus are not supported yet ({codes}), so they have no entities. To help add them, open the EPSNET integration, choose ⋮ → Download diagnostics and attach the file to an issue at {issue_url}. The file contains your PLC variable names; rename them in the file if you prefer."
+      "description": "{count} module(s) on the PLC bus are not supported yet ({codes}), so they have no entities. To help add them, open the integration, choose Configure → Download diagnostics and attach the file to an issue at {issue_url}. Variable names are hidden in the file unless you choose otherwise."
     },
     "no_variable_map": {
-      "title": "EPSNET: no PLC variable map",
-      "description": "This entry has no published-variable map, so its {count} module(s) are listed without entities: without the map it is unknown where their data sits and how to switch them. Open the integration, choose Configure → Re-import the variable map from the PLC, or delete and re-add the integration and upload the program's .pub file."
+      "title": "EPSNET: no variable names",
+      "description": "This entry has no variable names, so its {count} module(s) are listed without entities: without the names it is unknown where their data sits and how to switch them. Open the integration and choose Configure → Reload variable names from the PLC, or Load variable names from a .pub file."
     },
     "no_variable_map_read_only": {
-      "title": "EPSNET: no .pub file — read-only entities",
-      "description": "This entry has no published-variable map. The inputs and outputs of its {count} module(s) are read from the PLC program itself and shown read-only, named by module type and bus address. To get your own names and switch outputs, open the integration and choose Configure → Re-import the variable map from the PLC, or delete and re-add the integration and upload the program's .pub file."
+      "title": "EPSNET: no .pub file — states only, no control",
+      "description": "The PLC program's .pub file is missing, so Home Assistant only shows the states of this PLC's {count} module(s) and cannot switch anything. Entities are named by module type and bus address. To control lights and sockets and get your own names, open the integration and choose Configure → Load variable names from a .pub file (or Reload variable names from the PLC, if the file is stored there now). Entities keep their history."
     },
     "program_changed": {
       "title": "EPSNET: PLC program changed",

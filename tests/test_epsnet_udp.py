@@ -983,3 +983,44 @@ async def test_fetch_without_any_size_stops_at_erased_flash(monkeypatch) -> None
     assert len(requests) == 6
     assert [e.name for e in entries] == ["light_1"]
     assert client.fetch_progress == (1000, 1000)
+
+
+# One PLC's reply to the network search: its type and version as text.
+_SEARCH_REPLY = bytes.fromhex(
+    "01000200001d681717687e000009010303"
+    + "CP9999  B1.23.4 ".encode().hex()
+    + "0016"
+)
+
+
+def _search_reply() -> bytes:
+    """``_SEARCH_REPLY`` with a valid checksum."""
+    frame = bytearray(_SEARCH_REPLY)
+    frame[-2] = sum(frame[10:-2]) & 0xFF
+    return bytes(frame)
+
+
+def test_search_reply_gives_the_plc_type_and_version() -> None:
+    assert epsnet_udp._parse_search_reply(_search_reply()) == "CP9999 B1.23.4"
+    # an acknowledgement or noise is not a PLC
+    assert epsnet_udp._parse_search_reply(bytes.fromhex("010002000006107e00007e16")) is None
+    assert epsnet_udp._parse_search_reply(b"\x00\x01") is None
+
+
+def test_search_collects_the_plcs_that_answer() -> None:
+    server = ScriptedUdpServer([_search_reply()])
+    server.start()
+
+    found = epsnet_udp._search_blocking(("127.0.0.1",), server.port, 0.5)
+
+    assert found == [epsnet_udp.DiscoveredPlc("127.0.0.1", "CP9999 B1.23.4")]
+    assert found[0].model == "CP9999"
+    # the identity request, addressed the way a network search addresses it
+    assert server.requests == [bytes.fromhex("01000200000610007e6eec16")]
+
+
+def test_search_without_an_answer_finds_nothing() -> None:
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as silent:
+        silent.bind(("127.0.0.1", 0))
+        port = silent.getsockname()[1]
+        assert epsnet_udp._search_blocking(("127.0.0.1",), port, 0.1) == []

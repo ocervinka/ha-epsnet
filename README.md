@@ -9,8 +9,9 @@ Not affiliated with or endorsed by Teco a.s.; Tecomat, Foxtrot and iNELS are the
 The EPSNET support here was written for interoperability and is tested on one installation
 (an iNELS 2 CU2-01M central unit — first-generation Foxtrot hardware — with the modules listed below,
 Home Assistant 2026.2 and later). Other Foxtrot central units are untested.
-Reports from other setups are welcome: open the integration, choose **⋮ → Download diagnostics** and
-attach the file to an issue. It contains your PLC variable names; rename them if you prefer.
+Reports from other setups are welcome: open the integration, choose **Configure → Download
+diagnostics** and attach the file to an issue. Your own variable names are hidden in it unless you
+choose otherwise.
 
 Modules the integration doesn't know yet are not created as devices; they are listed in a
 **Repairs** notice instead (with their type codes), so you know what is missing.
@@ -47,14 +48,14 @@ The integration currently knows the data layout of:
 ### Marketplace (Home Assistant 2026.11 and later)
 
 1. **Settings → Marketplace → Add from link**, enter `ocervinka/ha-epsnet` and select **Add**.
-2. Install **EPSNET**.
+2. Install **Teco Foxtrot / iNELS 2 (EPSNET)**.
 3. Restart Home Assistant.
 
 ### HACS (Home Assistant before 2026.11)
 
 1. Add `https://github.com/ocervinka/ha-epsnet` as a custom repository in HACS with category
    **Integration**.
-2. Install **EPSNET** from HACS.
+2. Install **Teco Foxtrot / iNELS 2 (EPSNET)** from HACS.
 3. Restart Home Assistant.
 
 ### Manual
@@ -64,22 +65,37 @@ Copy `custom_components/epsnet` into your Home Assistant config directory under
 
 ## Configuration
 
-**Settings → Devices & services → Add integration → EPSNET**, then:
+**Settings → Devices & services → Add integration**, then search for *Teco*, *Foxtrot*, *iNELS*
+or *EPSNET*.
 
-1. **Connection** — a name, the PLC host or IP, the EPSNET UDP port (default `61682`), the local
-   UDP source port (default `61681`) and the scan interval (milliseconds of pause after each poll;
-   default `500`, `0` = immediately).
-2. **Variable map** — either **discover it from the PLC** (recommended: the published-variable map
-   is read straight out of the running program) or **upload an exported `.pub` / `.piz` / `.zip`**.
-3. **Confirm** — shows the PLC identity, the number of modules found and the number of published
-   points.
+1. **Pick the PLC.** The integration searches your network and lists the PLCs that answer, with
+   their type. Select yours and choose **Connect**. If none answers (the search only reaches PLCs
+   on the same network as Home Assistant), enter the PLC's address instead; the two UDP ports are
+   under *Advanced* and rarely need changing (PLC port `61682`, local port `61681`).
+2. **Wait.** The integration connects, scans the installed modules and reads the variable names
+   stored in the PLC. The screen shows the PLC type and the number of modules as soon as they are
+   known.
+3. **Done.** Home Assistant lists the modules and lets you assign them to rooms.
 
-Either way the PLC's module inventory is also scanned live, so entities are created only for
-hardware that is actually there. The map is stored in the config entry and is not re-read on its
-own: after changing the PLC program, use **Configure → Re-import the variable map from the PLC**,
-or **… from a file (.pub)** when the PLC holds no map or an old one (a program loaded with
-Mosaic). Either way the entry and its entity IDs stay; a repair notice tells you when the map
-actually changed, and a file that pairs with none of the PLC's modules is refused.
+Home Assistant may also notice a PLC by itself: it then appears under *Discovered* on the
+integrations page, and **Add** starts at step 2.
+
+A question is asked only when the PLC cannot answer it:
+
+- **The PLC stores no variable names** (see below): upload the program's `.pub` file, or continue
+  without it. Home Assistant then only shows states and cannot switch anything until you add the
+  file.
+- **Another program is connected to the PLC** (for example the programming tool): close it and
+  try again, or upload the `.pub` file instead.
+- **The uploaded file matches none of the modules:** it is probably from another project. Upload
+  another one, or use it anyway.
+
+The PLC's modules are always scanned live, so entities are created only for hardware that is
+actually there. The variable names are stored in the config entry and are not re-read on their
+own: after changing the PLC program, use **Configure → Reload variable names from the PLC**, or
+**Load variable names from a .pub file** when the PLC stores none or an old version (a program
+loaded with Mosaic). Either way the entry and its entity IDs stay; a repair notice tells you when
+the names actually changed, and a file that pairs with none of the PLC's modules is refused.
 
 ### The variable map
 
@@ -110,18 +126,18 @@ When the PLC gets a new program, the integration notices (the program checksum c
 until the programming tool is done, and reads the I/O configuration again; if it changed, the
 integration reloads. Meanwhile the entities placed from the program are unavailable.
 
-- **FoxTool** stores the `.pub` in the PLC when it loads the program, so *discover from the
-  PLC* finds it.
+- **FoxTool** stores the `.pub` in the PLC when it loads the program, so setup finds it there.
 - **Mosaic** writes it to the project folder on your PC, and only with *Project manager → Sw →
-  Export files → Assembler (.pub)* enabled. Upload that file.
+  Export files → Assembler (.pub)* enabled. Upload that file when setup asks for it.
 
 Discovery and the map fetch use a temporary UDP port, so FoxTool, Mosaic and the Firmware Updater
 can connect to the PLC while Home Assistant is running (the PLC's single management session is taken only
 during the few minutes of a map fetch).
 
-**Configure** on the integration later offers *Re-import the variable map from the PLC*,
-*Re-import the variable map from a file (.pub)* and the polling intervals: the pause between full
-reads of all values (default 500 ms) and the fast lane below. *Reconfigure* changes host and ports.
+**Configure** on the integration later offers *Reload variable names from the PLC*, *Load
+variable names from a .pub file*, *Update speed* (the pause between full reads of all values,
+default 500 ms, and the fast lane below, shown with this installation's measured read times) and
+*Download diagnostics*. *Reconfigure* changes the address and ports.
 
 ## Languages
 
@@ -136,14 +152,16 @@ language, copy `en.json` to `<language code>.json` and translate the values.
 
 ## Diagnostics and performance
 
-**Download diagnostics** (on the integration's ⋮ menu) returns the merged catalog: discovered
+**Configure → Download diagnostics** gives you a link to the diagnostics file (Home Assistant's
+own ⋮ → *Download diagnostics* returns the same file). It holds the merged catalog: discovered
 modules and their type codes, how they matched the published variables, unsupported modules, the
 raw discovery reads, the full stored variable map (one line per variable, as in the `.pub`), the
 program checksum the PLC reports, the I/O configuration read from the program (with the raw bytes)
 and, with a map, a check of every map variable against it plus the input/output bits that more
-than one map variable points at. To post the file publicly, turn on *Configure → Polling intervals and diagnostics →
-Hide variable names in diagnostics*: your own words in the names become placeholders (`w1`, `w2`…),
-consistently, so the structure stays readable. The same catalog (without the raw reads) is also written at startup to
+than one map variable points at. *Hide variable names* is ticked by default, so the file can be
+posted publicly: your own words in the names become placeholders (`w1`, `w2`…), consistently, so
+the structure stays readable. Untick it to keep the real names; the choice is remembered. The same
+catalog (without the raw reads, names not hidden) is also written at startup to
 `epsnet/<entry_id>_merged_catalog.yaml` in the Home Assistant config directory.
 
 The integration also exposes diagnostic timing sensors for:
@@ -215,9 +233,10 @@ pytest -q
 
 A full poll reads every state in grouped spans (≈0.6 s for ~250 states on a CU2-01M over
 Wi-Fi/LAN), so with the default 500 ms scan interval each input is sampled only every ~1.1 s
-and a wall-button press shorter than that can be missed entirely. **Options → Change the
-polling intervals → Fast lane** polls just the `binary_sensor` inputs on their own interval
-(100 ms recommended; 0 = off). The transport lock is held per span, so fast reads and writes
+and a wall-button press shorter than that can be missed entirely. The fast lane (**Configure →
+Update speed → Read buttons and motion sensors every**) polls just the `binary_sensor` inputs on
+their own interval. New installations start with 100 ms; ones set up before 0.6 keep their setting
+(off unless you turned it on), and 0 turns it off. The transport lock is held per span, so fast reads and writes
 interleave with the full cycle instead of queueing behind it; once the fast lane runs, the
 full cycle stops re-reading those inputs (shorter cycle, and a fresh fast value is never
 overwritten by an older full-cycle one). Cost: ~10 small UDP exchanges per second.

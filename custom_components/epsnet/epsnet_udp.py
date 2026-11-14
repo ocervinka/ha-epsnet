@@ -828,6 +828,102 @@ def _is_erased(data: bytes | bytearray) -> bool:
     return bool(data) and data.count(_STORAGE_ERASED) == len(data)
 
 
+# Station address the vendor's own network search puts in its identity request.
+_SEARCH_ADDRESS = 0x7E
+_SEARCH_TIMEOUT = 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveredPlc:
+    """One PLC that answered the network search."""
+
+    host: str
+    ident: str  # the PLC's own identity text: type and version
+
+    @property
+    def model(self) -> str:
+        """The PLC type (first word of the identity text)."""
+        return self.ident.split(" ", 1)[0]
+
+
+def plc_model(ident: str | None) -> str:
+    """PLC type from an identity text, or an empty string."""
+    return (ident or "").split(" ", 1)[0]
+
+
+def _parse_search_reply(datagram: bytes) -> str | None:
+    """Identity text of a search reply, or ``None`` for anything else."""
+    try:
+        _sequence, inner = _parse_wrapper(datagram)
+        _control, _address, payload = _parse_variable_frame(inner)
+        return _decode_ident_payload(payload) or None
+    except EpsnetProtocolError:
+        return None
+
+
+def _host_sort_key(host: str) -> tuple[int, ...]:
+    try:
+        return tuple(int(part) for part in host.split("."))
+    except ValueError:
+        return (0,)
+
+
+def _search_blocking(
+    addresses: tuple[str, ...], port: int, timeout: float
+) -> list[DiscoveredPlc]:
+    request = _wrap_frame(
+        1, _build_fixed_frame(0x00, _SEARCH_ADDRESS, _IDENT_SERVICE)
+    )
+    found: dict[str, str] = {}
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.bind(("", 0))
+        sent = 0
+        for address in addresses:
+            try:
+                sock.sendto(request, (address, port))
+                sent += 1
+            except OSError as err:
+                LOGGER.debug("PLC search could not send to %s: %s", address, err)
+        if not sent:
+            return []
+        deadline = monotonic() + timeout
+        while (remaining := deadline - monotonic()) > 0:
+            sock.settimeout(remaining)
+            try:
+                datagram, sender = sock.recvfrom(1024)
+            except OSError:  # includes the timeout
+                break
+            ident = _parse_search_reply(datagram)
+            if ident:
+                found.setdefault(sender[0], ident)
+    return [
+        DiscoveredPlc(host, found[host]) for host in sorted(found, key=_host_sort_key)
+    ]
+
+
+async def async_search_plcs(
+    addresses,
+    *,
+    port: int = 61682,
+    timeout: float = _SEARCH_TIMEOUT,
+) -> list[DiscoveredPlc]:
+    """Find PLCs on the local network.
+
+    Broadcasts one identity request to each of ``addresses`` (broadcast
+    addresses of the local networks) and collects the PLCs that answer within
+    ``timeout`` seconds. Read-only; takes no session on the PLC. Only PLCs on
+    the same network segment can answer.
+    """
+    try:
+        return await asyncio.to_thread(
+            _search_blocking, tuple(str(a) for a in addresses), port, timeout
+        )
+    except OSError as err:
+        LOGGER.debug("PLC search failed: %s", err)
+        return []
+
+
 class EpsnetUdpClient:
     """Minimal direct EPSNET UDP client for the current supported entity set."""
 

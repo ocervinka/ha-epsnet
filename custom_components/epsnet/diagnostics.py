@@ -405,19 +405,29 @@ async def _read_program_checksum(client) -> str | None:
     return None if value is None else _hex32(value)
 
 
+def names_hidden(entry) -> bool:
+    """Whether the download replaces the program's own words in variable names.
+
+    Hidden unless the user chose otherwise: the file is made to be sent to
+    someone else.
+    """
+    from .const import CONF_ANONYMIZE_DIAGNOSTICS
+
+    return bool(entry.data.get(CONF_ANONYMIZE_DIAGNOSTICS, True))
+
+
 async def async_get_config_entry_diagnostics(hass, entry) -> dict[str, object]:
     """Home Assistant "Download diagnostics": the merged-catalog snapshot.
 
     Includes the raw discovery reads and the full stored variable map, so a
     report from an untested PLC model is enough to see how its module table
     and its program's variables are laid out. Variable names from the PLC
-    program are included as-is (they are what the entities are built from),
-    unless the entry's "anonymize diagnostics" setting is on.
+    program have their own words replaced by placeholders unless the user
+    turned that off (see ``names_hidden``).
     """
     from homeassistant.loader import async_get_integration
 
     from .const import (
-        CONF_ANONYMIZE_DIAGNOSTICS,
         CONF_HOST,
         CONF_LOCAL_PORT,
         CONF_MAP,
@@ -431,7 +441,7 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict[str, object]:
         return {"error": "integration is not loaded (check the log for the setup error)"}
     data: dict[str, object] = {
         "integration_version": str((await async_get_integration(hass, DOMAIN)).version),
-        "names_anonymized": bool(entry.data.get(CONF_ANONYMIZE_DIAGNOSTICS, False)),
+        "names_anonymized": names_hidden(entry),
         "home_assistant": {"version": _ha_version()},
         "entity_count": len(runtime.catalog.entities),
         "program_checksum_s70": await _read_program_checksum(runtime.client),

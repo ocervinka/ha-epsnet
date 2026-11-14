@@ -23,6 +23,8 @@ if TYPE_CHECKING:  # PubEntry is only used in annotations (keeps the test stubs 
 
 LOGGER = logging.getLogger(__name__)
 _POLL_METRICS_EMA_ALPHA = 0.2
+# With that alpha the first read's share of the average is below 2 % after this many.
+_TIMING_SETTLED_AFTER_READS = 20
 _POLL_METRICS_PUBLISH_INTERVAL_SECONDS = 5.0
 
 
@@ -71,6 +73,7 @@ class EpsnetDataCoordinator(
         self.client = client
         self.catalog = catalog
         self._poll_sequence = 0
+        self._timing_samples = 0
         self._average_read_duration_ms: float | None = None
         self._average_cycle_duration_ms: float | None = None
         self._last_poll_started: float | None = None
@@ -209,6 +212,30 @@ class EpsnetDataCoordinator(
         return self._poll_metrics
 
     @property
+    def full_read_count(self) -> int:
+        """How many values one full read covers (the fast lane's inputs are not in it)."""
+        entries = self.polled_state_entries()
+        if self._fast_task is not None and self._fast_values:
+            return sum(1 for entry in entries if entry.name not in self._fast_names)
+        return len(entries)
+
+    @property
+    def current_timing_ms(self) -> tuple[float, float] | None:
+        """Running (read, cycle) averages in ms, or ``None`` until they have settled.
+
+        Unlike ``poll_metrics`` (published to the sensors at intervals) this is
+        always current. The first read after a start is often much slower than
+        the rest and weighs on the averages for a while, so they are held back
+        for the first ``_TIMING_SETTLED_AFTER_READS`` reads.
+        """
+        read, cycle = self._average_read_duration_ms, self._average_cycle_duration_ms
+        if read is None or cycle is None:
+            return None
+        if self._timing_samples < _TIMING_SETTLED_AFTER_READS:
+            return None
+        return read, cycle
+
+    @property
     def poll_metrics_version(self) -> int:
         """Return a monotonically increasing metrics snapshot version."""
         return self._poll_metrics_version
@@ -232,6 +259,7 @@ class EpsnetDataCoordinator(
 
     def _record_poll_metrics(self, *, poll_started: float, poll_finished: float) -> None:
         """Capture smoothed read/cycle timing and throttle HA publication."""
+        self._timing_samples += 1
         read_metrics = self.client.last_read_metrics
         read_duration_ms = (
             read_metrics.duration_seconds * 1000.0

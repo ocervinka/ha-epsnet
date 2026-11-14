@@ -1,183 +1,280 @@
 {
   "config": {
+    "flow_title": "{name}",
     "step": {
       "user": {
-        "title": "Nastavenie EPSNET",
-        "description": "Zadajte, ako sa pripojiť k PLC cez EPSNET UDP. Mapa publikovaných premenných sa načíta v ďalšom kroku.",
+        "title": "Pripojenie k PLC",
+        "description": "Vyberte PLC nájdené vo vašej sieti, alebo zadajte adresu ručne.",
         "data": {
-          "name": "Názov",
-          "host": "Adresa PLC",
-          "port": "Port PLC",
-          "local_port": "Lokálny zdrojový port UDP",
-          "scan_interval": "Prestávka po každom čítaní (milisekundy, 0 = bez prestávky)"
+          "plc": "PLC"
+        },
+        "submit": "Pripojiť"
+      },
+      "manual": {
+        "title": "Pripojenie k PLC",
+        "description": "Zadajte adresu PLC. Automatické hľadanie nájde len PLC, ktoré sú v rovnakej sieti ako Home Assistant.",
+        "data": {
+          "host": "Adresa PLC"
         },
         "data_description": {
-          "scan_interval": "Prestávka po každom úplnom čítaní hodnôt z PLC. Predvolené 500; 0 = ďalšie čítanie hneď. Rýchle čítanie tlačidiel nájdete po nastavení pod Konfigurovať."
+          "host": "IP adresa alebo sieťový názov, napríklad 192.168.1.50."
+        },
+        "submit": "Pripojiť",
+        "sections": {
+          "advanced": {
+            "name": "Rozšírené nastavenia",
+            "data": {
+              "port": "Port PLC",
+              "local_port": "Miestny port UDP"
+            },
+            "data_description": {
+              "port": "Port UDP, na ktorom PLC komunikuje. Predvolený je 61682.",
+              "local_port": "Port UDP, z ktorého Home Assistant vysiela. Predvolený je 61681; pri hodnote 0 ho vyberie systém."
+            }
+          }
         }
       },
-      "source": {
-        "title": "Zdroj mapy premenných",
-        "description": "Načítajte mapu publikovaných premenných priamo z PLC (odporúčané), alebo nahrajte exportovaný súbor .pub.",
-        "menu_options": {
-          "discover": "Načítať z PLC (odporúčané)",
-          "upload": "Nahrať súbor .pub"
-        }
+      "discovery_confirm": {
+        "title": "Pridať toto PLC?",
+        "description": "{ident} na adrese {host}.\n\nHome Assistant načíta jeho moduly a názvy premenných.",
+        "submit": "Pridať"
+      },
+      "run": {
+        "title": "Pripojenie k PLC"
       },
       "upload": {
         "title": "Nahrať súbor .pub",
-        "description": "Nahrajte exportovanú mapu .pub / .piz / .zip. PLC sa aj tak prejde naživo, aby sa mapa spárovala so skutočnými modulmi.",
+        "description": "Nahrajte súbor `.pub` k programu, ktorý práve beží v PLC. Môžete nahrať aj archív `.piz` alebo `.zip`, v ktorom je súbor uložený.\n\nMosaic súbor ukladá do priečinka projektu pri každom preklade programu, ak je v okne Manažer projektu → Sw → Exportní soubory (Project manager → Sw → Export files) zaškrtnutá voľba Assembler (.pub).",
         "data": {
-          "map_file": "Exportovaný súbor s mapou"
+          "map_file": "Vybrať súbor"
+        },
+        "submit": "Nahrať"
+      },
+      "no_map": {
+        "title": "V PLC nie sú uložené názvy premenných",
+        "description": "Nájdené moduly: {modules}. V PLC však nie je uložený súbor `.pub` k jeho programu, teda zoznam premenných programu. Bez neho Home Assistant:\n\n- **nemôže nič ovládať.** Len zobrazuje stavy: čo je zapnuté, teploty, stlačenia tlačidiel.\n- **nepozná vaše názvy.** Všetko pomenuje podľa typu modulu a adresy na zbernici.\n\nSúbor môžete doplniť aj neskôr v ponuke Konfigurovať: entity vytvorené teraz zostanú aj s históriou, dostanú vaše názvy a pribudne ovládanie.",
+        "menu_options": {
+          "upload": "Nahrať súbor .pub",
+          "inventory_only": "Pokračovať bez súboru"
+        },
+        "menu_option_descriptions": {
+          "upload": "Vlastné názvy a ovládanie hneď od začiatku.",
+          "inventory_only": "Zatiaľ len zobrazenie stavov. Súbor doplníte neskôr v ponuke Konfigurovať."
         }
       },
-      "confirm": {
-        "title": "Potvrdenie nastavenia EPSNET",
-        "description": "Zdroj mapy: {source}\nIdentifikácia PLC: {ident}\nModuly: {devices}\nPublikované body: {points}\n\nVytvoriť integráciu?"
+      "busy": {
+        "title": "PLC práve používa iný program",
+        "description": "K PLC je pripojený iný program, najskôr programovací nástroj. Kým je pripojený, názvy premenných sa načítať nedajú. Zatvorte ho a skúste to znova.",
+        "menu_options": {
+          "retry": "Skúsiť znova",
+          "upload": "Radšej nahrať súbor .pub"
+        }
       },
-      "confirm_unsupported": {
-        "title": "Potvrdenie nastavenia EPSNET",
-        "description": "Zdroj mapy: {source}\nIdentifikácia PLC: {ident}\nModuly: {devices}\nPublikované body: {points}\n\n⚠️ {unsupported_count} modul(ov) na zbernici PLC zatiaľ nie je podporovaných ({unsupported_codes}). Nebudú mať žiadne entity. Pomôžte ich prosím doplniť: po dokončení otvorte integráciu, zvoľte ⋮ → Stiahnuť diagnostické údaje a súbor priložte k hláseniu na {issue_url}.\n\nVytvoriť integráciu?"
+      "file_no_match": {
+        "title": "Súbor nezodpovedá žiadnemu z modulov",
+        "description": "Nájdené moduly: {modules}. Žiadna premenná zo súboru však k žiadnemu z nich nepatrí. Najskôr ide o súbor `.pub` z iného projektu.",
+        "menu_options": {
+          "upload": "Nahrať iný súbor",
+          "use_file": "Použiť tento súbor aj tak"
+        },
+        "menu_option_descriptions": {
+          "use_file": "Home Assistant bude len zobrazovať stavy pod všeobecnými názvami a nič sa nebude dať ovládať. Premenné zo súboru sa uložia a budú súčasťou diagnostiky. Vďaka tomu možno doplniť podporu programov s vlastným pomenovaním."
+        }
       },
       "reconfigure": {
-        "title": "Zmena pripojenia EPSNET",
-        "description": "Zmeňte, ako sa Home Assistant pripája k PLC. Uložená mapa premenných zostane; na jej obnovenie použite Konfigurovať → Znovu načítať.",
+        "title": "Zmena pripojenia k PLC",
+        "description": "Upravte adresu a porty, cez ktoré sa Home Assistant pripája k PLC. Uložené názvy premenných zostanú. Znovu ich načítate voľbou Konfigurovať → Znovu načítať názvy premenných z PLC.",
         "data": {
           "host": "Adresa PLC",
           "port": "Port PLC",
-          "local_port": "Lokálny zdrojový port UDP"
-        }
-      },
-      "source_plc_busy": {
-        "title": "Zdroj mapy premenných",
-        "description": "Načítajte mapu publikovaných premenných priamo z PLC (odporúčané), alebo nahrajte exportovaný súbor .pub.\n\n⚠️ PLC je obsadené (výhradné spojenie drží iný program, napr. FoxTool). Zatvorte ostatné nástroje a skúste to znova.",
-        "menu_options": {
-          "discover": "Načítať z PLC (odporúčané)",
-          "upload": "Nahrať súbor .pub"
-        }
-      },
-      "source_cannot_connect": {
-        "title": "Zdroj mapy premenných",
-        "description": "Načítajte mapu publikovaných premenných priamo z PLC (odporúčané), alebo nahrajte exportovaný súbor .pub.\n\n⚠️ PLC nie je dostupné. Skontrolujte adresu a porty a skúste to znova — alebo nahrajte súbor .pub.",
-        "menu_options": {
-          "discover": "Načítať z PLC (odporúčané)",
-          "upload": "Nahrať súbor .pub"
-        }
-      },
-      "source_no_map": {
-        "title": "Zdroj mapy premenných",
-        "description": "Načítajte mapu publikovaných premenných priamo z PLC (odporúčané), alebo nahrajte exportovaný súbor .pub.\n\n⚠️ V PLC nie je uložená mapa publikovaných premenných (nie je v ňom súbor .pub — napr. program nahraný z Mosaicu). Nahrajte namiesto toho súbor .pub z vášho projektu; v Mosaicu v Project manager → Sw → Export files zapnite Assembler (.pub) a program preložte. Ak súbor .pub nemáte po ruke, môžete pokračovať bez neho: vstupy a výstupy modulov sa potom, kde to ide, načítajú z programu PLC a zobrazia len na čítanie, pomenované podľa typu modulu a adresy na zbernici.",
-        "menu_options": {
-          "discover": "Načítať z PLC (odporúčané)",
-          "upload": "Nahrať súbor .pub",
-          "inventory_only": "Pokračovať bez súboru .pub (len čítanie, všeobecné názvy)"
+          "local_port": "Miestny port UDP"
         }
       }
     },
     "progress": {
-      "run_setup": "Pripájam sa k PLC a čítam mapu premenných… {progress}"
+      "connect": "Pripájam sa k PLC na adrese {host}…",
+      "read_names": "Pripojené k {ident}.\n\nNájdené moduly: {modules}.\n\nNačítavam názvy premenných… {progress}",
+      "match_file": "Porovnávam súbor s modulmi PLC…"
     },
     "error": {
-      "invalid_host": "Zadajte názov alebo IP adresu PLC.",
-      "path_not_found": "Nahraný súbor sa nedá prečítať.",
-      "invalid_pub": "Nahraný súbor nie je platná mapa .pub.",
-      "cannot_connect": "PLC nie je dostupné. Skontrolujte adresu a porty.",
-      "plc_busy": "PLC je obsadené (výhradné spojenie drží iný program, napr. FoxTool). Zatvorte ostatné nástroje a skúste to znova."
+      "invalid_host": "Zadajte adresu PLC.",
+      "path_not_found": "Nahraný súbor sa nepodarilo prečítať.",
+      "invalid_pub": "Nahraný súbor nie je platný súbor .pub.",
+      "cannot_connect": "Na tejto adrese žiadne PLC neodpovedá. Skontrolujte adresu a či je PLC zapnuté."
     },
     "abort": {
-      "already_configured": "Toto zariadenie EPSNET je už nastavené.",
-      "reconfigure_successful": "Pripojenie EPSNET bolo zmenené."
+      "already_configured": "Toto PLC je už nastavené.",
+      "already_in_progress": "Nastavenie tohto PLC už prebieha.",
+      "reconfigure_successful": "Pripojenie bolo zmenené.",
+      "no_plc": "Na tejto adrese neodpovedalo žiadne PLC."
+    },
+    "create_entry": {
+      "with_names": "Načítané moduly: {modules}, premenné: {variables}.",
+      "read_only": "Načítané moduly: {modules}. Home Assistant zatiaľ len zobrazuje ich stavy a nemôže nič ovládať. Pomenoval ich podľa typu modulu a adresy na zbernici.\n\nOvládanie a vlastné názvy získate, keď doplníte súbor `.pub` k programu: Konfigurovať → Načítať názvy premenných zo súboru .pub. História entít zostane.",
+      "with_names_unsupported": "Načítané moduly: {modules}, premenné: {variables}.\n\nZatiaľ nepodporované moduly: {unsupported_count} ({unsupported_codes}). Nemajú žiadne entity. Ako pomôcť s ich doplnením, nájdete v Nastavenia → Opravy.",
+      "read_only_unsupported": "Načítané moduly: {modules}. Home Assistant zatiaľ len zobrazuje ich stavy a nemôže nič ovládať. Pomenoval ich podľa typu modulu a adresy na zbernici.\n\nOvládanie a vlastné názvy získate, keď doplníte súbor `.pub` k programu: Konfigurovať → Načítať názvy premenných zo súboru .pub. História entít zostane.\n\nZatiaľ nepodporované moduly: {unsupported_count} ({unsupported_codes}). Nemajú žiadne entity. Ako pomôcť s ich doplnením, nájdete v Nastavenia → Opravy."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "EPSNET",
-        "description": "Zdroj: {source} · PLC: {ident} · {points} bodov · CRC {crc}\n\n**Znovu načítajte mapu premenných** po zmene programu v PLC, aby Home Assistant čítal a spínal správne premenné. Entity si ponechajú svoje ID.\n- **Z PLC** načíta mapu uloženú v PLC spolu s programom.\n- **Zo súboru** nahrá súbor `.pub` exportovaný s programom. Použite, keď PLC žiadnu mapu neobsahuje, alebo len starú.\n\n**Intervaly čítania a diagnostika** určujú, ako často sa z PLC čítajú hodnoty a či sa v diagnostike skryjú názvy premenných.",
+        "title": "Nastavenie PLC",
+        "description": "Moduly: {modules} · premenné: {variables}",
         "menu_options": {
-          "reimport_plc": "Znovu načítať mapu premenných z PLC",
-          "reimport_file": "Znovu načítať mapu premenných zo súboru (.pub)",
-          "settings": "Intervaly čítania a diagnostika"
-        }
-      },
-      "settings": {
-        "title": "Intervaly čítania a diagnostika",
-        "description": "Ako často Home Assistant číta hodnoty z PLC. Kratšie intervaly znamenajú rýchlejšie aktualizácie, ale viac sieťovej prevádzky a záťaže PLC. Uloženie integráciu znovu načíta.",
-        "data": {
-          "scan_interval": "Prestávka medzi úplnými čítaniami (milisekundy)",
-          "fast_scan_interval": "Rýchle čítanie tlačidiel a pohybových snímačov (milisekundy)",
-          "anonymize_diagnostics": "Skryť názvy premenných v diagnostike"
+          "reimport_plc": "Znovu načítať názvy premenných z PLC",
+          "reimport_file": "Načítať názvy premenných zo súboru .pub",
+          "speed": "Rýchlosť čítania",
+          "diagnostics": "Stiahnuť diagnostiku"
         },
-        "data_description": {
-          "scan_interval": "Každý cyklus prečíta všetky hodnoty, ktoré integrácia používa (niekoľko sto hodnôt trvá asi pol sekundy), a potom toľko čaká pred ďalším. Predvolené 500; 0 = ďalšie čítanie hneď.",
-          "fast_scan_interval": "Číta len dvojstavové vstupy (tlačidlá na stene, pohybové snímače, kontakty) vo vlastnom krátkom cykle, aby sa krátke stlačenie tlačidla nestratilo medzi úplnými čítaniami. 0 = vypnuté; odporúčané 100 (asi 10 malých dopytov za sekundu).",
-          "anonymize_diagnostics": "Slová v názvoch premenných vášho programu (miestnosti, mená…) nahradí v ⋮ → Stiahnuť diagnostické údaje zástupnými slovami w1, w2…, takže súbor môžete zdieľať verejne. Rovnaké slovo dostane vždy rovnakú náhradu, takže súbor zostane použiteľný. Slová, podľa ktorých sa integrácia sama rozhoduje (light, plug, pir, magnet, ON/OFF…), a kódy modulov zostanú."
-        }
-      },
-      "reimport_file": {
-        "title": "Načítať zo súboru",
-        "description": "Nahrajte súbor `.pub` / `.piz` / `.zip` exportovaný s programom, ktorý teraz beží v PLC. Moduly PLC sa aj tak prejdú naživo, aby sa k nim mapa spárovala. Ak súbor nemožno použiť, ponechá sa pôvodná mapa.",
-        "data": {
-          "map_file": "Exportovaný súbor s mapou"
+        "menu_option_descriptions": {
+          "reimport_plc": "Po zmene programu v PLC. ID entít sa nezmenia.",
+          "reimport_file": "Keď v PLC názvy nie sú, alebo sú zastarané.",
+          "speed": "Ako často sa z PLC čítajú hodnoty.",
+          "diagnostics": "Súbor s opisom tejto inštalácie, ktorý sa prikladá k hláseniu problému."
         }
       },
       "init_plc_busy": {
-        "title": "EPSNET",
-        "description": "Zdroj: {source} · PLC: {ident} · {points} bodov · CRC {crc}\n\n⚠️ PLC je obsadené (výhradné spojenie drží iný program). Skúste to znova.\n\n**Znovu načítajte mapu premenných** po zmene programu v PLC, aby Home Assistant čítal a spínal správne premenné. Entity si ponechajú svoje ID.\n- **Z PLC** načíta mapu uloženú v PLC spolu s programom.\n- **Zo súboru** nahrá súbor `.pub` exportovaný s programom. Použite, keď PLC žiadnu mapu neobsahuje, alebo len starú.\n\n**Intervaly čítania a diagnostika** určujú, ako často sa z PLC čítajú hodnoty a či sa v diagnostike skryjú názvy premenných.",
+        "title": "Nastavenie PLC",
+        "description": "⚠️ PLC práve používa iný program. Zatvorte ho a skúste to znova.\n\nModuly: {modules} · premenné: {variables}",
         "menu_options": {
-          "reimport_plc": "Znovu načítať mapu premenných z PLC",
-          "reimport_file": "Znovu načítať mapu premenných zo súboru (.pub)",
-          "settings": "Intervaly čítania a diagnostika"
+          "reimport_plc": "Znovu načítať názvy premenných z PLC",
+          "reimport_file": "Načítať názvy premenných zo súboru .pub",
+          "speed": "Rýchlosť čítania",
+          "diagnostics": "Stiahnuť diagnostiku"
+        },
+        "menu_option_descriptions": {
+          "reimport_plc": "Po zmene programu v PLC. ID entít sa nezmenia.",
+          "reimport_file": "Keď v PLC názvy nie sú, alebo sú zastarané.",
+          "speed": "Ako často sa z PLC čítajú hodnoty.",
+          "diagnostics": "Súbor s opisom tejto inštalácie, ktorý sa prikladá k hláseniu problému."
         }
       },
       "init_cannot_connect": {
-        "title": "EPSNET",
-        "description": "Zdroj: {source} · PLC: {ident} · {points} bodov · CRC {crc}\n\n⚠️ PLC nie je dostupné, mapu sa nepodarilo znovu načítať.\n\n**Znovu načítajte mapu premenných** po zmene programu v PLC, aby Home Assistant čítal a spínal správne premenné. Entity si ponechajú svoje ID.\n- **Z PLC** načíta mapu uloženú v PLC spolu s programom.\n- **Zo súboru** nahrá súbor `.pub` exportovaný s programom. Použite, keď PLC žiadnu mapu neobsahuje, alebo len starú.\n\n**Intervaly čítania a diagnostika** určujú, ako často sa z PLC čítajú hodnoty a či sa v diagnostike skryjú názvy premenných.",
+        "title": "Nastavenie PLC",
+        "description": "⚠️ PLC neodpovedá, názvy premenných sa preto nenačítali.\n\nModuly: {modules} · premenné: {variables}",
         "menu_options": {
-          "reimport_plc": "Znovu načítať mapu premenných z PLC",
-          "reimport_file": "Znovu načítať mapu premenných zo súboru (.pub)",
-          "settings": "Intervaly čítania a diagnostika"
+          "reimport_plc": "Znovu načítať názvy premenných z PLC",
+          "reimport_file": "Načítať názvy premenných zo súboru .pub",
+          "speed": "Rýchlosť čítania",
+          "diagnostics": "Stiahnuť diagnostiku"
+        },
+        "menu_option_descriptions": {
+          "reimport_plc": "Po zmene programu v PLC. ID entít sa nezmenia.",
+          "reimport_file": "Keď v PLC názvy nie sú, alebo sú zastarané.",
+          "speed": "Ako často sa z PLC čítajú hodnoty.",
+          "diagnostics": "Súbor s opisom tejto inštalácie, ktorý sa prikladá k hláseniu problému."
         }
       },
       "init_no_map": {
-        "title": "EPSNET",
-        "description": "Zdroj: {source} · PLC: {ident} · {points} bodov · CRC {crc}\n\n⚠️ PLC nevrátilo žiadnu mapu publikovaných premenných; ponechaná pôvodná mapa. Načítajte ju radšej zo súboru.\n\n**Znovu načítajte mapu premenných** po zmene programu v PLC, aby Home Assistant čítal a spínal správne premenné. Entity si ponechajú svoje ID.\n- **Z PLC** načíta mapu uloženú v PLC spolu s programom.\n- **Zo súboru** nahrá súbor `.pub` exportovaný s programom. Použite, keď PLC žiadnu mapu neobsahuje, alebo len starú.\n\n**Intervaly čítania a diagnostika** určujú, ako často sa z PLC čítajú hodnoty a či sa v diagnostike skryjú názvy premenných.",
+        "title": "Nastavenie PLC",
+        "description": "⚠️ V PLC nie sú názvy premenných uložené, zostali preto tie doterajšie. Načítajte ich zo súboru .pub.\n\nModuly: {modules} · premenné: {variables}",
         "menu_options": {
-          "reimport_plc": "Znovu načítať mapu premenných z PLC",
-          "reimport_file": "Znovu načítať mapu premenných zo súboru (.pub)",
-          "settings": "Intervaly čítania a diagnostika"
+          "reimport_plc": "Znovu načítať názvy premenných z PLC",
+          "reimport_file": "Načítať názvy premenných zo súboru .pub",
+          "speed": "Rýchlosť čítania",
+          "diagnostics": "Stiahnuť diagnostiku"
+        },
+        "menu_option_descriptions": {
+          "reimport_plc": "Po zmene programu v PLC. ID entít sa nezmenia.",
+          "reimport_file": "Keď v PLC názvy nie sú, alebo sú zastarané.",
+          "speed": "Ako často sa z PLC čítajú hodnoty.",
+          "diagnostics": "Súbor s opisom tejto inštalácie, ktorý sa prikladá k hláseniu problému."
         }
+      },
+      "speed": {
+        "title": "Rýchlosť čítania",
+        "description": "Práve zmerané: prečítanie všetkých {values} hodnôt trvá asi {read_ms} ms. S pauzou nastavenou nižšie sa každá hodnota obnoví približne raz za {cycle_ms} ms. Po uložení sa integrácia znovu načíta.",
+        "data": {
+          "scan_interval": "Pauza po prečítaní všetkých hodnôt (ms)",
+          "fast_scan_interval": "Interval čítania tlačidiel a pohybových snímačov (ms)"
+        },
+        "submit": "Uložiť",
+        "data_description": {
+          "scan_interval": "Predvolená hodnota je 500. Pri 0 sa ďalšie čítanie začne hneď. Kratšia pauza znamená čerstvejšie hodnoty, ale viac komunikácie s PLC.",
+          "fast_scan_interval": "Tlačidlá, pohybové snímače a kontakty (počet vstupov: {fast_inputs}) sa čítajú zvlášť a častejšie, aby integrácia zachytila aj krátke stlačenie. Odporúčaná hodnota je 100; 0 túto funkciu vypne."
+        }
+      },
+      "speed_unmeasured": {
+        "title": "Rýchlosť čítania",
+        "description": "Ako často Home Assistant číta hodnoty z PLC. Po uložení sa integrácia znovu načíta.",
+        "data": {
+          "scan_interval": "Pauza po prečítaní všetkých hodnôt (ms)",
+          "fast_scan_interval": "Interval čítania tlačidiel a pohybových snímačov (ms)"
+        },
+        "submit": "Uložiť",
+        "data_description": {
+          "scan_interval": "Predvolená hodnota je 500. Pri 0 sa ďalšie čítanie začne hneď. Kratšia pauza znamená čerstvejšie hodnoty, ale viac komunikácie s PLC.",
+          "fast_scan_interval": "Tlačidlá, pohybové snímače a kontakty sa čítajú zvlášť a častejšie, aby integrácia zachytila aj krátke stlačenie. Odporúčaná hodnota je 100; 0 túto funkciu vypne."
+        }
+      },
+      "diagnostics": {
+        "title": "Stiahnuť diagnostiku",
+        "description": "Diagnostický súbor opisuje moduly a premenné vášho PLC. Priložte ho, keď hlásite problém alebo chcete doplniť podporu niektorého modulu.",
+        "submit": "Pokračovať",
+        "data": {
+          "anonymize_diagnostics": "Skryť názvy premenných"
+        },
+        "data_description": {
+          "anonymize_diagnostics": "Slová z vašich názvov premenných (miestnosti, mená…) sa nahradia značkami w1, w2…, takže súbor môžete zdieľať verejne. Zostanú len slová, podľa ktorých sa integrácia riadi (light, plug, pir, magnet, ON/OFF…), a kódy modulov. Voľba sa zapamätá a platí aj pre ⋮ → Stiahnuť diagnostické údaje."
+        }
+      },
+      "diagnostics_download": {
+        "title": "Stiahnuť diagnostiku",
+        "description": "Váš súbor: {link}\n\nOdkaz platí 10 minút.",
+        "submit": "Hotovo"
+      },
+      "reimport_file": {
+        "title": "Načítať názvy premenných zo súboru",
+        "description": "Nahrajte súbor `.pub` k programu, ktorý práve beží v PLC. Môžete nahrať aj archív `.piz` alebo `.zip`, v ktorom je súbor uložený. Ak sa súbor nedá použiť, doterajšie názvy zostanú.",
+        "data": {
+          "map_file": "Vybrať súbor"
+        },
+        "submit": "Nahrať"
+      },
+      "reimport_plc": {
+        "title": "Znovu načítať názvy premenných z PLC"
+      },
+      "reimport_file_run": {
+        "title": "Načítať názvy premenných zo súboru"
       }
     },
-    "error": {
-      "path_not_found": "Nahraný súbor sa nedá prečítať.",
-      "invalid_pub": "Nahraný súbor nie je platná mapa .pub.",
-      "pub_no_match": "Súbor nezodpovedá žiadnemu modulu nájdenému v tomto PLC — nie je z iného projektu? Ponechaná pôvodná mapa."
-    },
     "progress": {
-      "run_setup": "Znovu čítam mapu premenných z PLC…",
-      "run_file_setup": "Párujem nahranú mapu s modulmi PLC…"
+      "read_names": "Načítavam názvy premenných z PLC… {progress}",
+      "match_file": "Porovnávam súbor s modulmi PLC…"
+    },
+    "error": {
+      "path_not_found": "Nahraný súbor sa nepodarilo prečítať.",
+      "invalid_pub": "Nahraný súbor nie je platný súbor .pub.",
+      "pub_no_match": "Súbor nezodpovedá žiadnemu modulu tohto PLC. Nie je z iného projektu? Doterajšie názvy zostali bez zmeny."
+    }
+  },
+  "selector": {
+    "plc": {
+      "options": {
+        "manual": "Zadať adresu ručne"
+      }
     }
   },
   "issues": {
     "map_changed": {
-      "title": "Program PLC EPSNET sa zmenil",
-      "description": "Mapa publikovaných premenných v PLC sa od posledného načítania zmenila (CRC {old_crc} → {new_crc}, {points} bodov). Nová mapa bola použitá. Skontrolujte entity a automatizácie, či sa adresy premenných neposunuli."
+      "title": "EPSNET: program v PLC sa zmenil",
+      "description": "Názvy premenných uložené v PLC sa od posledného načítania zmenili (teraz {points} premenných, kontrolný súčet {old_crc} → {new_crc}). Integrácia už používa nové názvy. Skontrolujte entity a automatizácie, či sa niektoré premenné nepresunuli."
     },
     "unsupported_modules": {
-      "title": "EPSNET: moduly PLC zatiaľ nie sú podporované",
-      "description": "{count} modul(ov) na zbernici PLC zatiaľ nie je podporovaných ({codes}), preto nemajú žiadne entity. Ak ich chcete pomôcť doplniť, otvorte integráciu EPSNET, zvoľte ⋮ → Stiahnuť diagnostické údaje a súbor priložte k hláseniu na {issue_url}. Súbor obsahuje názvy premenných z vášho programu; pokojne ich v ňom prepíšte."
+      "title": "EPSNET: niektoré moduly zatiaľ nie sú podporované",
+      "description": "Počet modulov na zbernici, ktoré integrácia zatiaľ nepodporuje: {count} ({codes}). Nemajú preto žiadne entity. Ak chcete pomôcť s ich doplnením, otvorte integráciu, zvoľte Konfigurovať → Stiahnuť diagnostiku a súbor priložte k hláseniu na {issue_url}. Názvy premenných sú v súbore skryté, ak to nezmeníte."
     },
     "no_variable_map": {
-      "title": "EPSNET: chýba mapa premenných PLC",
-      "description": "Táto položka nemá mapu publikovaných premenných, preto je {count} modul(ov) uvedených bez entít: bez mapy nie je známe, kde sú ich dáta ani ako ich spínať. Otvorte integráciu a zvoľte Konfigurovať → Znovu načítať mapu premenných z PLC, alebo integráciu odstráňte, pridajte znova a nahrajte súbor .pub z programu."
+      "title": "EPSNET: chýbajú názvy premenných",
+      "description": "Integrácia nemá názvy premenných, a moduly (počet: {count}) sú preto uvedené bez entít: bez názvov nie je známe, kde sú ich dáta ani ako ich ovládať. Otvorte integráciu a zvoľte Konfigurovať → Znovu načítať názvy premenných z PLC, alebo Načítať názvy premenných zo súboru .pub."
     },
     "no_variable_map_read_only": {
-      "title": "EPSNET: bez súboru .pub — entity len na čítanie",
-      "description": "Táto položka nemá mapu publikovaných premenných. Vstupy a výstupy jej {count} modul(ov) sa čítajú priamo z programu PLC a zobrazujú sa len na čítanie, pomenované podľa typu modulu a adresy na zbernici. Pre vlastné názvy a spínanie výstupov otvorte integráciu a zvoľte Konfigurovať → Znovu načítať mapu premenných z PLC, alebo integráciu odstráňte, pridajte znova a nahrajte súbor .pub z programu."
+      "title": "EPSNET: bez súboru .pub len zobrazenie stavov, bez ovládania",
+      "description": "Chýba súbor .pub k programu PLC. Home Assistant preto len zobrazuje stavy modulov (počet: {count}) a nemôže nič ovládať. Entity sú pomenované podľa typu modulu a adresy na zbernici. Ovládanie a vlastné názvy získate, keď otvoríte integráciu a zvolíte Konfigurovať → Načítať názvy premenných zo súboru .pub (alebo Znovu načítať názvy premenných z PLC, ak je súbor medzitým uložený v PLC). História entít zostane."
     },
     "program_changed": {
-      "title": "EPSNET: program PLC sa zmenil",
-      "description": "Do PLC bol nahraný nový program a jeho rozloženie vstupov a výstupov sa nepodarilo znovu načítať (PLC môže byť ešte obsadené programovacím nástrojom). Kanály modulov umiestnené podľa programu sú dovtedy nedostupné. Pre nový pokus integráciu znovu načítajte."
+      "title": "EPSNET: program v PLC sa zmenil",
+      "description": "Do PLC bol nahraný nový program, ale rozloženie jeho vstupov a výstupov sa zatiaľ nepodarilo načítať (PLC možno ešte používa programovací nástroj). Entity vytvorené podľa programu PLC sú dovtedy nedostupné. Skúste integráciu znovu načítať."
     }
   },
   "entity": {

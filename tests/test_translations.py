@@ -45,9 +45,27 @@ def test_translation_matches_keys_and_placeholders(path: Path) -> None:
 
 def test_every_shown_step_has_a_translation() -> None:
     flow = (COMPONENT / "config_flow.py").read_text(encoding="utf-8")
-    assert "description_placeholders={\"error\"" not in flow
-    config_steps = set(STRINGS["config"]["step"])
-    options_steps = set(STRINGS["options"]["step"])
-    for error in ("plc_busy", "cannot_connect"):
-        assert f"source_{error}" in config_steps
-        assert f"init_{error}" in options_steps
+    steps = set(STRINGS["config"]["step"]) | set(STRINGS["options"]["step"])
+    # Progress steps included: they take their dialog title from the step.
+    shown = set(re.findall(r'(?<!next_)step_id="(\w+)"', flow)) | {
+        "reimport_plc", "reimport_file_run"
+    }
+    assert shown <= steps, shown - steps
+    # Variants that carry the warning of a failed reload.
+    for error in ("plc_busy", "cannot_connect", "no_map"):
+        assert f"init_{error}" in STRINGS["options"]["step"]
+    for action in re.findall(r'return "(\w+)", ', flow):
+        assert action in STRINGS["config"]["progress"] or action in STRINGS["options"]["progress"]
+
+
+def test_every_menu_option_has_a_label() -> None:
+    flow = (COMPONENT / "config_flow.py").read_text(encoding="utf-8")
+    for step_id, options in re.findall(
+        r'step_id="(\w+)",\s*menu_options=\[([^\]]+)\]', flow
+    ):
+        section = "config" if step_id in STRINGS["config"]["step"] else "options"
+        labels = STRINGS[section]["step"][step_id]["menu_options"]
+        assert set(re.findall(r'"(\w+)"', options)) == set(labels), step_id
+    for step in STRINGS["options"]["step"].values():
+        if "menu_options" in step:
+            assert step["menu_options"] == STRINGS["options"]["step"]["init"]["menu_options"]

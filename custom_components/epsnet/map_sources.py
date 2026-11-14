@@ -146,6 +146,7 @@ async def run_setup(
     user_pub_path: str | None = None,
     preset_entries: tuple[PubEntry, ...] | None = None,
     preset_source: str | None = None,
+    on_inventory=None,
 ) -> SetupResult:
     """Resolve IDENTITY (CIB scan) + ADDRESSES (.pub) and build the entity catalog.
 
@@ -154,6 +155,10 @@ async def run_setup(
     scanned live so the two stay consistent.
     """
     inventory = await client.discover_runtime_inventory()  # IDENTITY (required)
+    if on_inventory is not None:
+        # Lets the config flow show the PLC type and module count while the
+        # (slower) map read is still running.
+        on_inventory(inventory)
     if preset_entries is not None:
         entries, source, ident = preset_entries, (preset_source or "file"), None
     else:

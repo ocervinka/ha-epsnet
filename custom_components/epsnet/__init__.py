@@ -265,6 +265,16 @@ def _drop_slot_identifiers(hass, entry) -> None:
             registry.async_update_device(device.id, new_identifiers=kept)
 
 
+def fast_lane_entries(catalog: EntityCatalog) -> tuple[PubEntry, ...]:
+    """The on/off inputs (buttons, motion sensors, contacts) read on the fast lane."""
+    fast_names = {
+        spec.state_name
+        for spec in catalog.entities_for_platform("binary_sensor")
+        if spec.enabled_by_default
+    }
+    return tuple(e for e in catalog.state_entries() if e.name in fast_names)
+
+
 async def async_migrate_entry(hass, entry) -> bool:
     """Migrate older config entries to the EPSNET-only schema."""
     if entry.version > 4:
@@ -371,12 +381,6 @@ async def async_setup_entry(hass, entry) -> bool:
         raise
 
     fast_ms = int(entry.options.get(CONF_FAST_SCAN_INTERVAL, entry.data.get(CONF_FAST_SCAN_INTERVAL, DEFAULT_FAST_SCAN_INTERVAL)) or 0)
-    fast_names = {
-        spec.state_name
-        for spec in catalog.entities_for_platform("binary_sensor")
-        if spec.enabled_by_default
-    }
-    fast_entries = tuple(e for e in catalog.state_entries() if e.name in fast_names)
     coordinator = EpsnetDataCoordinator(
         hass,
         client=client,
@@ -385,7 +389,7 @@ async def async_setup_entry(hass, entry) -> bool:
         scan_interval_milliseconds=int(entry.data[CONF_SCAN_INTERVAL]),
         config_entry=entry,
         fast_scan_interval_milliseconds=fast_ms,
-        fast_entries=fast_entries,
+        fast_entries=fast_lane_entries(catalog),
     )
     await coordinator.async_config_entry_first_refresh()
     coordinator.start_fast_lane()
