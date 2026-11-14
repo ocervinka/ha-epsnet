@@ -75,6 +75,17 @@ def _no_plc_on_the_network():
         yield search
 
 
+@pytest.fixture(autouse=True)
+def _no_program_checksum_read():
+    """The program watcher and the diagnostics read the PLC's program checksum
+    on their own; these tests have no PLC to answer."""
+    with patch(
+        "custom_components.epsnet.program_watch.read_program_checksum",
+        AsyncMock(return_value=None),
+    ):
+        yield
+
+
 async def _pick_found_plc(hass: HomeAssistant, found=(SIM_PLC,)) -> dict:
     """Start the flow with ``found`` on the network and pick the first PLC."""
     with patch(_SEARCH, AsyncMock(return_value=list(found))):
@@ -383,8 +394,8 @@ async def test_unsupported_modules_are_reported_not_created(
         assert entry.state is ConfigEntryState.LOADED
 
         models = {
-            d.model for d in dr.async_get(hass).devices.values()
-            if entry.entry_id in d.config_entries
+            d.model
+            for d in dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)
         }
         assert models and not any(m.startswith("Unknown") for m in models)
 
