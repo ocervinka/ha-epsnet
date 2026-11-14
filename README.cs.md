@@ -9,7 +9,7 @@ Projekt není nijak spojen se společností Teco a.s. ani jí podporován; Tecom
 jsou její ochranné známky. Podpora EPSNET vznikla kvůli interoperabilitě a je vyzkoušená na jedné
 instalaci (centrální jednotka iNELS 2 CU2-01M — hardware Foxtrot první generace — s moduly níže,
 Home Assistant 2026.2 a novější). Jiné centrální jednotky Foxtrot zatím nejsou vyzkoušené. Zkušenosti z jiných
-instalací jsou vítané — otevřete integraci, zvolte **⋮ → Stáhnout diagnostiku** a soubor přiložte
+instalací jsou vítané — otevřete integraci, zvolte **⋮ → Stáhnout diagnostická data** a soubor přiložte
 k hlášení (issue). Obsahuje názvy proměnných z vašeho programu; klidně je přepište.
 
 Moduly, které integrace zatím nezná, se nevytvoří jako zařízení; místo toho je uvidíte (s kódy typů)

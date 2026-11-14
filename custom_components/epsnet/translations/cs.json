@@ -12,7 +12,7 @@
           "scan_interval": "Prodleva po každém čtení (milisekundy, 0 = bez prodlevy)"
         },
         "data_description": {
-          "scan_interval": "Prodleva po každém úplném čtení hodnot z PLC. Výchozí 500; 0 = další čtení hned. Rychlé čtení tlačítek najdete po nastavení pod Konfigurovat."
+          "scan_interval": "Prodleva po každém úplném čtení hodnot z PLC. Výchozí 500; 0 = další čtení hned. Rychlé čtení tlačítek najdete po nastavení pod Nastavit."
         }
       },
       "source": {
@@ -36,7 +36,7 @@
       },
       "confirm_unsupported": {
         "title": "Potvrzení nastavení EPSNET",
-        "description": "Zdroj mapy: {source}\nIdentifikace PLC: {ident}\nModuly: {devices}\nPublikované body: {points}\n\n⚠️ {unsupported_count} modul(ů) na sběrnici PLC zatím není podporováno ({unsupported_codes}). Nebudou mít žádné entity. Pomozte je prosím doplnit: po dokončení otevřete integraci, zvolte ⋮ → Stáhnout diagnostiku a soubor přiložte k hlášení na {issue_url}.\n\nVytvořit integraci?"
+        "description": "Zdroj mapy: {source}\nIdentifikace PLC: {ident}\nModuly: {devices}\nPublikované body: {points}\n\n⚠️ {unsupported_count} modul(ů) na sběrnici PLC zatím není podporováno ({unsupported_codes}). Nebudou mít žádné entity. Pomozte je prosím doplnit: po dokončení otevřete integraci, zvolte ⋮ → Stáhnout diagnostická data a soubor přiložte k hlášení na {issue_url}.\n\nVytvořit integraci?"
       },
       "reconfigure": {
         "title": "Změna připojení EPSNET",
@@ -110,7 +110,7 @@
         "data_description": {
           "scan_interval": "Každý cyklus přečte všechny hodnoty, které integrace používá (několik set hodnot trvá asi půl sekundy), a pak tak dlouho čeká před dalším. Výchozí 500; 0 = další čtení hned.",
           "fast_scan_interval": "Čte jen dvoustavové vstupy (tlačítka na zdi, pohybová čidla, kontakty) ve vlastním krátkém cyklu, aby se krátký stisk tlačítka neztratil mezi úplnými čteními. 0 = vypnuto; doporučeno 100 (asi 10 malých dotazů za sekundu).",
-          "anonymize_diagnostics": "Slova v názvech proměnných vašeho programu (místnosti, jména…) nahradí v ⋮ → Stáhnout diagnostiku zástupnými slovy w1, w2…, takže soubor můžete sdílet veřejně. Stejné slovo dostane vždy stejnou náhradu, takže soubor zůstane použitelný. Slova, podle kterých integrace sama rozhoduje (light, plug, pir, magnet, ON/OFF…), a kódy modulů zůstanou."
+          "anonymize_diagnostics": "Slova v názvech proměnných vašeho programu (místnosti, jména…) nahradí v ⋮ → Stáhnout diagnostická data zástupnými slovy w1, w2…, takže soubor můžete sdílet veřejně. Stejné slovo dostane vždy stejnou náhradu, takže soubor zůstane použitelný. Slova, podle kterých integrace sama rozhoduje (light, plug, pir, magnet, ON/OFF…), a kódy modulů zůstanou."
         }
       },
       "reimport_file": {
@@ -165,15 +165,15 @@
     },
     "unsupported_modules": {
       "title": "EPSNET: moduly PLC zatím nejsou podporované",
-      "description": "{count} modul(ů) na sběrnici PLC zatím není podporováno ({codes}), proto nemají žádné entity. Pokud je chcete pomoci doplnit, otevřete integraci EPSNET, zvolte ⋮ → Stáhnout diagnostiku a soubor přiložte k hlášení na {issue_url}. Soubor obsahuje názvy proměnných z vašeho programu; klidně je v něm přepište."
+      "description": "{count} modul(ů) na sběrnici PLC zatím není podporováno ({codes}), proto nemají žádné entity. Pokud je chcete pomoci doplnit, otevřete integraci EPSNET, zvolte ⋮ → Stáhnout diagnostická data a soubor přiložte k hlášení na {issue_url}. Soubor obsahuje názvy proměnných z vašeho programu; klidně je v něm přepište."
     },
     "no_variable_map": {
       "title": "EPSNET: chybí mapa proměnných PLC",
-      "description": "Tato položka nemá mapu publikovaných proměnných, proto je {count} modul(ů) uvedeno bez entit: bez mapy není známo, kde jsou jejich data ani jak je spínat. Otevřete integraci a zvolte Konfigurovat → Znovu načíst mapu proměnných z PLC, nebo integraci odstraňte, přidejte znovu a nahrajte soubor .pub z programu."
+      "description": "Tato položka nemá mapu publikovaných proměnných, proto je {count} modul(ů) uvedeno bez entit: bez mapy není známo, kde jsou jejich data ani jak je spínat. Otevřete integraci a zvolte Nastavit → Znovu načíst mapu proměnných z PLC, nebo integraci odstraňte, přidejte znovu a nahrajte soubor .pub z programu."
     },
     "no_variable_map_read_only": {
       "title": "EPSNET: bez souboru .pub — entity jen pro čtení",
-      "description": "Tato položka nemá mapu publikovaných proměnných. Vstupy a výstupy jejích {count} modul(ů) se čtou přímo z programu PLC a zobrazují se jen pro čtení, pojmenované podle typu modulu a adresy na sběrnici. Pro vlastní názvy a spínání výstupů otevřete integraci a zvolte Konfigurovat → Znovu načíst mapu proměnných z PLC, nebo integraci odstraňte, přidejte znovu a nahrajte soubor .pub z programu."
+      "description": "Tato položka nemá mapu publikovaných proměnných. Vstupy a výstupy jejích {count} modul(ů) se čtou přímo z programu PLC a zobrazují se jen pro čtení, pojmenované podle typu modulu a adresy na sběrnici. Pro vlastní názvy a spínání výstupů otevřete integraci a zvolte Nastavit → Znovu načíst mapu proměnných z PLC, nebo integraci odstraňte, přidejte znovu a nahrajte soubor .pub z programu."
     },
     "program_changed": {
       "title": "EPSNET: program PLC se změnil",

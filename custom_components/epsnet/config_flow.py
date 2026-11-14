@@ -582,9 +582,13 @@ class EpsnetOptionsFlow(config_entries.OptionsFlow):
             # Never replace a working map with an empty one.
             self._error = "no_map"
             return self.async_show_progress_done(next_step_id="init")
-        if from_file and not self._result.catalog.entities:
+        if from_file and not any(
+            not entity.from_program for entity in self._result.catalog.entities
+        ):
             # Nothing in the file pairs with a module this PLC has: almost
             # certainly the wrong project. Keep the working map and ask again.
+            # (Entities placed from the PLC program exist with any file, so
+            # only the ones the file itself named count.)
             self._error = "pub_no_match"
             return self.async_show_progress_done(next_step_id="reimport_file")
         return self.async_show_progress_done(next_step_id="reimport_done")

@@ -378,3 +378,63 @@ async def test_program_entities_no_longer_placed_leave_the_registry(hass):
     _async_remove_stale_program_entities(hass, entry, catalog)
     assert registry.async_get(gone) is None
     assert registry.async_get(kept) is not None and registry.async_get(map_entity) is not None
+
+
+async def test_reimport_of_a_file_naming_no_module_is_refused_with_program_entities(
+    hass, tmp_path, enable_custom_integrations
+):
+    """Program-placed entities exist with any file, so they must not make a
+    .pub of another project look like a match."""
+    import asyncio
+    import contextlib
+    from unittest.mock import AsyncMock, patch
+
+    from homeassistant.data_entry_flow import FlowResultType
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.epsnet.const import DOMAIN
+
+    inventory = _inventory(_layout(HOUSE), [WSB, RELAY, DIMMER])
+    upload = tmp_path / "other.pub"
+    upload.write_text("unrelated_counter R W 100 INT PUB_INOUT\n", encoding="utf-8")
+
+    @contextlib.contextmanager
+    def _process(_hass, _file_id):
+        yield upload
+
+    entry = MockConfigEntry(
+        domain=DOMAIN, version=4, minor_version=2, title="EPSNET",
+        data={"name": "EPSNET", "host": "127.0.0.1", "port": 61682,
+              "local_port": 61681, "scan_interval": 500},
+    )
+    entry.add_to_hass(hass)
+
+    async def _inventory_soon(*_a, **_k):
+        await asyncio.sleep(0)  # let the flow show its progress step
+        return inventory
+
+    with patch.multiple(
+        "custom_components.epsnet.epsnet_udp.EpsnetUdpClient",
+        discover_runtime_inventory=AsyncMock(side_effect=_inventory_soon),
+        async_fetch_pub_from_plc=AsyncMock(return_value=("SIM PLC", ())),
+        get_values=AsyncMock(return_value={}),
+        get_point_values=AsyncMock(return_value={}),
+        async_close=AsyncMock(),
+    ), patch("homeassistant.components.file_upload.process_uploaded_file", _process), \
+            patch("custom_components.epsnet.program_watch.ProgramWatcher.run", AsyncMock()):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        old_data = dict(entry.data)
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"next_step_id": "reimport_file"})
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"map_file": "0123456789abcdef0123456789abcdef"})
+        await hass.async_block_till_done()
+        result = await hass.config_entries.options.async_configure(result["flow_id"])
+
+    assert result["type"] == FlowResultType.FORM and result["step_id"] == "reimport_file"
+    assert result["errors"] == {"map_file": "pub_no_match"}
+    assert dict(entry.data) == old_data
+    await hass.config_entries.async_unload(entry.entry_id)

@@ -410,6 +410,23 @@ async def async_setup_entry(hass, entry) -> bool:
     return True
 
 
+# Repairs issues are keyed by entry; HA does not remove them with the entry.
+_ENTRY_ISSUE_PREFIXES = (
+    "map_changed",
+    "no_variable_map",
+    "program_changed",
+    "unsupported_modules",
+)
+
+
+async def async_remove_entry(hass, entry) -> None:
+    """Drop the Repairs issues a deleted entry left behind."""
+    from homeassistant.helpers import issue_registry as ir
+
+    for prefix in _ENTRY_ISSUE_PREFIXES:
+        ir.async_delete_issue(hass, DOMAIN, f"{prefix}_{entry.entry_id}")
+
+
 async def async_unload_entry(hass, entry) -> bool:
     """Unload an EPSNET config entry."""
     runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id)

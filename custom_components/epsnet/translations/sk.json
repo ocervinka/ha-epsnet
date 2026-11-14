@@ -36,7 +36,7 @@
       },
       "confirm_unsupported": {
         "title": "Potvrdenie nastavenia EPSNET",
-        "description": "Zdroj mapy: {source}\nIdentifikácia PLC: {ident}\nModuly: {devices}\nPublikované body: {points}\n\n⚠️ {unsupported_count} modul(ov) na zbernici PLC zatiaľ nie je podporovaných ({unsupported_codes}). Nebudú mať žiadne entity. Pomôžte ich prosím doplniť: po dokončení otvorte integráciu, zvoľte ⋮ → Stiahnuť diagnostiku a súbor priložte k hláseniu na {issue_url}.\n\nVytvoriť integráciu?"
+        "description": "Zdroj mapy: {source}\nIdentifikácia PLC: {ident}\nModuly: {devices}\nPublikované body: {points}\n\n⚠️ {unsupported_count} modul(ov) na zbernici PLC zatiaľ nie je podporovaných ({unsupported_codes}). Nebudú mať žiadne entity. Pomôžte ich prosím doplniť: po dokončení otvorte integráciu, zvoľte ⋮ → Stiahnuť diagnostické údaje a súbor priložte k hláseniu na {issue_url}.\n\nVytvoriť integráciu?"
       },
       "reconfigure": {
         "title": "Zmena pripojenia EPSNET",
@@ -110,7 +110,7 @@
         "data_description": {
           "scan_interval": "Každý cyklus prečíta všetky hodnoty, ktoré integrácia používa (niekoľko sto hodnôt trvá asi pol sekundy), a potom toľko čaká pred ďalším. Predvolené 500; 0 = ďalšie čítanie hneď.",
           "fast_scan_interval": "Číta len dvojstavové vstupy (tlačidlá na stene, pohybové snímače, kontakty) vo vlastnom krátkom cykle, aby sa krátke stlačenie tlačidla nestratilo medzi úplnými čítaniami. 0 = vypnuté; odporúčané 100 (asi 10 malých dopytov za sekundu).",
-          "anonymize_diagnostics": "Slová v názvoch premenných vášho programu (miestnosti, mená…) nahradí v ⋮ → Stiahnuť diagnostiku zástupnými slovami w1, w2…, takže súbor môžete zdieľať verejne. Rovnaké slovo dostane vždy rovnakú náhradu, takže súbor zostane použiteľný. Slová, podľa ktorých sa integrácia sama rozhoduje (light, plug, pir, magnet, ON/OFF…), a kódy modulov zostanú."
+          "anonymize_diagnostics": "Slová v názvoch premenných vášho programu (miestnosti, mená…) nahradí v ⋮ → Stiahnuť diagnostické údaje zástupnými slovami w1, w2…, takže súbor môžete zdieľať verejne. Rovnaké slovo dostane vždy rovnakú náhradu, takže súbor zostane použiteľný. Slová, podľa ktorých sa integrácia sama rozhoduje (light, plug, pir, magnet, ON/OFF…), a kódy modulov zostanú."
         }
       },
       "reimport_file": {
@@ -165,7 +165,7 @@
     },
     "unsupported_modules": {
       "title": "EPSNET: moduly PLC zatiaľ nie sú podporované",
-      "description": "{count} modul(ov) na zbernici PLC zatiaľ nie je podporovaných ({codes}), preto nemajú žiadne entity. Ak ich chcete pomôcť doplniť, otvorte integráciu EPSNET, zvoľte ⋮ → Stiahnuť diagnostiku a súbor priložte k hláseniu na {issue_url}. Súbor obsahuje názvy premenných z vášho programu; pokojne ich v ňom prepíšte."
+      "description": "{count} modul(ov) na zbernici PLC zatiaľ nie je podporovaných ({codes}), preto nemajú žiadne entity. Ak ich chcete pomôcť doplniť, otvorte integráciu EPSNET, zvoľte ⋮ → Stiahnuť diagnostické údaje a súbor priložte k hláseniu na {issue_url}. Súbor obsahuje názvy premenných z vášho programu; pokojne ich v ňom prepíšte."
     },
     "no_variable_map": {
       "title": "EPSNET: chýba mapa premenných PLC",

@@ -476,3 +476,29 @@ async def test_reimport_from_a_file_of_another_project_keeps_the_map(
     assert result["type"] == FlowResultType.FORM and result["step_id"] == "reimport_file"
     assert result["errors"] == {"map_file": "pub_no_match"}
     assert entry.data["map"] == old_map
+
+
+async def test_removing_the_entry_removes_its_repairs(hass: HomeAssistant) -> None:
+    from homeassistant.helpers import issue_registry as ir
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN, version=4, minor_version=2, title="EPSNET",
+        data={"name": "EPSNET", "host": "127.0.0.1", "port": 61682,
+              "local_port": 61681, "scan_interval": 500},
+    )
+    entry.add_to_hass(hass)
+    with _patch_client(AsyncMock()):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    issues = ir.async_get(hass)
+    ir.async_create_issue(
+        hass, DOMAIN, f"map_changed_{entry.entry_id}", is_fixable=False,
+        severity=ir.IssueSeverity.WARNING, translation_key="map_changed",
+    )
+    assert issues.async_get_issue(DOMAIN, f"no_variable_map_{entry.entry_id}")
+
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert not [i for i in issues.issues.values() if i.domain == DOMAIN]
