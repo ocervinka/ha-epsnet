@@ -14,6 +14,7 @@ it (see ``map_sources.freeze_setup`` / ``__init__.async_setup_entry``).
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import timedelta
 from ipaddress import ip_address
 import logging
@@ -65,6 +66,7 @@ from .epsnet_udp import (
 )
 from .map_sources import SetupResult, freeze_setup, run_setup
 from .models import PubEntry
+from .program_watch import clear_names_issues
 from .pubfile import PubFileParseError, load_pub_entries
 
 LOGGER = logging.getLogger(__name__)
@@ -616,20 +618,260 @@ class EpsnetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
 
-class EpsnetOptionsFlow(config_entries.OptionsFlow):
+@dataclass(frozen=True)
+class NamesChange:
+    """What loading the variable names again changed."""
+
+    changed: bool
+    variables: int
+    added: int
+    removed: int
+    moved: int  # same name, another place in the PLC's memory (or another type)
+
+
+def apply_reimport(hass, entry, result: SetupResult, *, notify: bool) -> NamesChange:
+    """Store freshly loaded variable names in the entry.
+
+    The entry is reloaded only when the names differ from the stored ones.
+    ``notify`` leaves a Repairs notice about a change (for a flow that just
+    closes); a flow that shows the outcome itself passes ``False``.
+    """
+    from homeassistant.helpers import issue_registry as ir
+
+    old_blob = entry.data.get(CONF_MAP) or {}
+    old_crc = old_blob.get("crc")
+    new_blob = freeze_setup(result)
+    changed = old_crc != new_blob["crc"]
+
+    def _places(items) -> dict[str, tuple]:
+        return {
+            item["name"]: tuple(
+                item.get(key) for key in ("register", "storage", "address", "bit", "data_type")
+            )
+            for item in items
+        }
+
+    old_places = _places(old_blob.get("entries") or ())
+    new_places = _places(new_blob["entries"])
+
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, CONF_MAP: new_blob}
+    )
+    issue_id = f"map_changed_{entry.entry_id}"
+    if notify and changed and old_crc is not None:
+        # The fresh names are already applied; the card is informational.
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="map_changed",
+            translation_placeholders={
+                "old_crc": hex(old_crc),
+                "new_crc": hex(new_blob["crc"]),
+                "points": str(result.address_count),
+            },
+        )
+    else:
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
+    # The names now belong to the program the PLC runs.
+    clear_names_issues(hass, entry.entry_id)
+    if changed:
+        hass.config_entries.async_schedule_reload(entry.entry_id)
+    return NamesChange(
+        changed=changed,
+        variables=len(new_places),
+        added=len(new_places.keys() - old_places.keys()),
+        removed=len(old_places.keys() - new_places.keys()),
+        moved=sum(
+            1
+            for name in new_places.keys() & old_places.keys()
+            if new_places[name] != old_places[name]
+        ),
+    )
+
+
+class ReimportSteps:
+    """Flow steps that load an existing entry's variable names again, from the
+    PLC or from an uploaded file, under a progress step.
+
+    Shared by the options flow (Configure) and the repair flow of the "the PLC
+    has a new program" notice. The flow class supplies the entry, its own flow
+    manager, the ``init`` step (which shows ``self._error`` as a warning) and
+    ``reimport_done`` (which applies ``self._result``).
+    """
+
+    _setup_task: Any | None = None
+    _result: SetupResult | None = None
+    _error: str | None = None
+    _reimport_client: EpsnetUdpClient | None = None
+    _reimport_owns_client = False
+    _reimport_entries: tuple[PubEntry, ...] | None = None
+
+    def _reimport_config_entry(self):
+        raise NotImplementedError
+
+    def _reimport_flow_manager(self):
+        raise NotImplementedError
+
+    # -- Re-import the map from the PLC -------------------------------------
+
+    async def async_step_reimport_plc(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        self._reimport_entries = None
+        return await self._async_reimport_progress("reimport_plc")
+
+    # -- Re-import the map from an uploaded file -----------------------------
+
+    async def async_step_reimport_file(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Upload a .pub for an existing entry (the PLC holds none, or an old one)."""
+        from homeassistant.components.file_upload import process_uploaded_file
+
+        errors: dict[str, str] = {}
+        if self._error == "pub_no_match":
+            # Back from a file that matched nothing: any input passed along is
+            # that same upload, not a new one.
+            errors[CONF_MAP_FILE] = self._error
+            self._error = None
+            user_input = None
+        if user_input is not None:
+            file_id = user_input[CONF_MAP_FILE]
+
+            def _read() -> tuple[PubEntry, ...]:
+                with process_uploaded_file(self.hass, file_id) as path:
+                    return load_pub_entries(path)
+
+            try:
+                entries = await self.hass.async_add_executor_job(_read)
+            except FileNotFoundError:
+                errors[CONF_MAP_FILE] = "path_not_found"
+            except PubFileParseError:
+                errors[CONF_MAP_FILE] = "invalid_pub"
+            else:
+                if not entries:
+                    errors[CONF_MAP_FILE] = "invalid_pub"
+                else:
+                    self._reimport_entries = entries
+                    return await self.async_step_reimport_file_run()
+
+        return self.async_show_form(
+            step_id="reimport_file", data_schema=_pub_file_schema(), errors=errors
+        )
+
+    async def async_step_reimport_file_run(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        return await self._async_reimport_progress("reimport_file_run")
+
+    # -- Shared re-import progress -------------------------------------------
+
+    def _progress_state(self) -> tuple[str, dict[str, str] | None, float | None]:
+        if self._reimport_entries is not None:
+            return "match_file", None, None
+        text, fraction = _fetch_progress(self._reimport_client)
+        return "read_names", {"progress": text}, fraction
+
+    async def _async_reimport_progress(self, step_id: str) -> FlowResult:
+        """Scan the PLC and build the catalog under a spinner, then apply it.
+
+        With ``_reimport_entries`` set (uploaded file) only the module scan talks
+        to the PLC; otherwise the map is fetched from the PLC too.
+        """
+        from_file = self._reimport_entries is not None
+        if self._setup_task is None:
+            self._reimport_client, self._reimport_owns_client = (
+                self._resolve_reimport_client()
+            )
+            self._setup_task = self.hass.async_create_task(
+                self._async_reimport(), eager_start=False
+            )
+            self.hass.async_create_task(
+                _pump_progress(
+                    self,
+                    self._reimport_flow_manager(),
+                    self._setup_task,
+                    self._progress_state,
+                )
+            )
+
+        if not self._setup_task.done():
+            action, placeholders, _fraction = self._progress_state()
+            return self.async_show_progress(
+                step_id=step_id,
+                progress_action=action,
+                description_placeholders=placeholders,
+                progress_task=self._setup_task,
+            )
+
+        task, self._setup_task = self._setup_task, None
+        try:
+            self._result = task.result()
+        except PlcBusyError:
+            self._error = "plc_busy"
+            return self.async_show_progress_done(next_step_id="init")
+        except (EpsnetError, OSError) as err:
+            LOGGER.warning("EPSNET re-import failed: %s", err)
+            self._error = "cannot_connect"
+            return self.async_show_progress_done(next_step_id="init")
+        if not self._result.address_count:
+            # Never replace a working map with an empty one.
+            self._error = "no_map"
+            return self.async_show_progress_done(next_step_id="init")
+        if from_file and not _file_names_a_module(self._result):
+            # Nothing in the file pairs with a module this PLC has: almost
+            # certainly the wrong project. Keep the working map and ask again.
+            self._error = "pub_no_match"
+            return self.async_show_progress_done(next_step_id="reimport_file")
+        return self.async_show_progress_done(next_step_id="reimport_done")
+
+    def _resolve_reimport_client(self) -> tuple[EpsnetUdpClient, bool]:
+        """Return (client, owns_it). Reuse the LIVE runtime client so its lock
+        serialises the (exclusive) fetch against ongoing polling -- one PLC
+        conversation, no contention. Fall back to a transient ephemeral client
+        (which we then own and must close) only if the entry isn't set up.
+        """
+        entry = self._reimport_config_entry()
+        runtime = (self.hass.data.get(DOMAIN) or {}).get(entry.entry_id)
+        client = getattr(runtime, "client", None)
+        if client is not None:
+            return client, False
+        return (
+            EpsnetUdpClient(
+                entry.data[CONF_HOST], entry.data[CONF_PORT], local_port=0
+            ),
+            True,
+        )
+
+    async def _async_reimport(self) -> SetupResult:
+        try:
+            if self._reimport_entries is not None:
+                return await run_setup(
+                    self._reimport_client,
+                    preset_entries=self._reimport_entries,
+                    preset_source="file",
+                )
+            return await run_setup(self._reimport_client)
+        finally:
+            if self._reimport_owns_client and self._reimport_client is not None:
+                await self._reimport_client.async_close()
+
+
+class EpsnetOptionsFlow(ReimportSteps, config_entries.OptionsFlow):
     """Any-time settings: reload the variable names (from the PLC or a file),
     change the update speed, download diagnostics.
 
     ``self.config_entry`` is provided by Home Assistant; do not store it.
     """
 
-    def __init__(self) -> None:
-        self._setup_task: Any | None = None
-        self._result: SetupResult | None = None
-        self._error: str | None = None
-        self._reimport_client: EpsnetUdpClient | None = None
-        self._reimport_owns_client = False
-        self._reimport_entries: tuple[PubEntry, ...] | None = None
+    def _reimport_config_entry(self):
+        return self.config_entry
+
+    def _reimport_flow_manager(self):
+        return self.hass.config_entries.options
 
     def _runtime(self):
         return (self.hass.data.get(DOMAIN) or {}).get(self.config_entry.entry_id)
@@ -786,184 +1028,14 @@ class EpsnetOptionsFlow(config_entries.OptionsFlow):
             description_placeholders={"link": link},
         )
 
-    # -- Re-import the map from the PLC -------------------------------------
-
-    async def async_step_reimport_plc(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        self._reimport_entries = None
-        return await self._async_reimport_progress("reimport_plc")
-
-    # -- Re-import the map from an uploaded file -----------------------------
-
-    async def async_step_reimport_file(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Upload a .pub for an existing entry (the PLC holds none, or an old one)."""
-        from homeassistant.components.file_upload import process_uploaded_file
-
-        errors: dict[str, str] = {}
-        if self._error == "pub_no_match":
-            # Back from a file that matched nothing: any input passed along is
-            # that same upload, not a new one.
-            errors[CONF_MAP_FILE] = self._error
-            self._error = None
-            user_input = None
-        if user_input is not None:
-            file_id = user_input[CONF_MAP_FILE]
-
-            def _read() -> tuple[PubEntry, ...]:
-                with process_uploaded_file(self.hass, file_id) as path:
-                    return load_pub_entries(path)
-
-            try:
-                entries = await self.hass.async_add_executor_job(_read)
-            except FileNotFoundError:
-                errors[CONF_MAP_FILE] = "path_not_found"
-            except PubFileParseError:
-                errors[CONF_MAP_FILE] = "invalid_pub"
-            else:
-                if not entries:
-                    errors[CONF_MAP_FILE] = "invalid_pub"
-                else:
-                    self._reimport_entries = entries
-                    return await self.async_step_reimport_file_run()
-
-        return self.async_show_form(
-            step_id="reimport_file", data_schema=_pub_file_schema(), errors=errors
-        )
-
-    async def async_step_reimport_file_run(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        return await self._async_reimport_progress("reimport_file_run")
-
-    # -- Shared re-import progress -------------------------------------------
-
-    def _progress_state(self) -> tuple[str, dict[str, str] | None, float | None]:
-        if self._reimport_entries is not None:
-            return "match_file", None, None
-        text, fraction = _fetch_progress(self._reimport_client)
-        return "read_names", {"progress": text}, fraction
-
-    async def _async_reimport_progress(self, step_id: str) -> FlowResult:
-        """Scan the PLC and build the catalog under a spinner, then apply it.
-
-        With ``_reimport_entries`` set (uploaded file) only the module scan talks
-        to the PLC; otherwise the map is fetched from the PLC too.
-        """
-        from_file = self._reimport_entries is not None
-        if self._setup_task is None:
-            self._reimport_client, self._reimport_owns_client = (
-                self._resolve_reimport_client()
-            )
-            self._setup_task = self.hass.async_create_task(
-                self._async_reimport(), eager_start=False
-            )
-            self.hass.async_create_task(
-                _pump_progress(
-                    self,
-                    self.hass.config_entries.options,
-                    self._setup_task,
-                    self._progress_state,
-                )
-            )
-
-        if not self._setup_task.done():
-            action, placeholders, _fraction = self._progress_state()
-            return self.async_show_progress(
-                step_id=step_id,
-                progress_action=action,
-                description_placeholders=placeholders,
-                progress_task=self._setup_task,
-            )
-
-        task, self._setup_task = self._setup_task, None
-        try:
-            self._result = task.result()
-        except PlcBusyError:
-            self._error = "plc_busy"
-            return self.async_show_progress_done(next_step_id="init")
-        except (EpsnetError, OSError) as err:
-            LOGGER.warning("EPSNET re-import failed: %s", err)
-            self._error = "cannot_connect"
-            return self.async_show_progress_done(next_step_id="init")
-        if not self._result.address_count:
-            # Never replace a working map with an empty one.
-            self._error = "no_map"
-            return self.async_show_progress_done(next_step_id="init")
-        if from_file and not _file_names_a_module(self._result):
-            # Nothing in the file pairs with a module this PLC has: almost
-            # certainly the wrong project. Keep the working map and ask again.
-            self._error = "pub_no_match"
-            return self.async_show_progress_done(next_step_id="reimport_file")
-        return self.async_show_progress_done(next_step_id="reimport_done")
-
-    def _resolve_reimport_client(self) -> tuple[EpsnetUdpClient, bool]:
-        """Return (client, owns_it). Reuse the LIVE runtime client so its lock
-        serialises the (exclusive) fetch against ongoing polling -- one PLC
-        conversation, no contention. Fall back to a transient ephemeral client
-        (which we then own and must close) only if the entry isn't set up.
-        """
-        entry = self.config_entry
-        runtime = (self.hass.data.get(DOMAIN) or {}).get(entry.entry_id)
-        client = getattr(runtime, "client", None)
-        if client is not None:
-            return client, False
-        return (
-            EpsnetUdpClient(
-                entry.data[CONF_HOST], entry.data[CONF_PORT], local_port=0
-            ),
-            True,
-        )
-
-    async def _async_reimport(self) -> SetupResult:
-        try:
-            if self._reimport_entries is not None:
-                return await run_setup(
-                    self._reimport_client,
-                    preset_entries=self._reimport_entries,
-                    preset_source="file",
-                )
-            return await run_setup(self._reimport_client)
-        finally:
-            if self._reimport_owns_client and self._reimport_client is not None:
-                await self._reimport_client.async_close()
-
     async def async_step_reimport_done(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        from homeassistant.helpers import issue_registry as ir
-
         assert self._result is not None
         entry = self.config_entry
-        old_blob = entry.data.get(CONF_MAP) or {}
-        old_crc = old_blob.get("crc")
-        new_blob = freeze_setup(self._result)
-
-        self.hass.config_entries.async_update_entry(
-            entry, data={**entry.data, CONF_MAP: new_blob}
-        )
-
-        issue_id = f"map_changed_{entry.entry_id}"
-        if old_crc is not None and old_crc != new_blob["crc"]:
-            # Program on the PLC changed since the last import. Notify only --
-            # the fresh map is already applied; the card is informational.
-            ir.async_create_issue(
-                self.hass,
-                DOMAIN,
-                issue_id,
-                is_fixable=False,
-                severity=ir.IssueSeverity.WARNING,
-                translation_key="map_changed",
-                translation_placeholders={
-                    "old_crc": hex(old_crc),
-                    "new_crc": hex(new_blob["crc"]),
-                    "points": str(self._result.address_count),
-                },
-            )
-        else:
-            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
-
-        self.hass.config_entries.async_schedule_reload(entry.entry_id)
+        change = apply_reimport(self.hass, entry, self._result, notify=True)
+        if not change.changed:
+            # Same names; reload all the same, as this menu item always has
+            # (the module scan just made may have found other hardware).
+            self.hass.config_entries.async_schedule_reload(entry.entry_id)
         return self.async_create_entry(title="", data={})

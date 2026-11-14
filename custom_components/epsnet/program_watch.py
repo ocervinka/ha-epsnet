@@ -8,6 +8,11 @@ three times with growing gaps. Same layout -> nothing changes; different layout
 -> the entry is reloaded (entities rebuilt); no success -> a Repairs notice, and
 no further attempt until the checksum changes again. Meanwhile, entities placed
 by the program layout are unavailable.
+
+The variable names are a second matter. They are stored with the checksum of the
+program they were loaded for and are never re-read on their own (reading them
+takes the PLC's management session). When the PLC runs another program, a
+fixable Repairs notice offers to load them again (``repairs.py``).
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from .const import DOMAIN
+from .const import CONF_MAP, DOMAIN
 from .epsnet_udp import EpsnetError
 from .models import EpsnetPoint
 from .program_layout import layout_fingerprint
@@ -31,6 +36,24 @@ PROGRAM_CHECKSUM_POINT = EpsnetPoint(
     key="s70", name="S70", register="S", storage="D", address=70,
     bit=None, data_type="UDINT",
 )
+
+
+NAMES_ISSUE_PREFIX = "names_outdated_"
+
+
+def names_issue_id(entry_id: str, checksum: int) -> str:
+    """One notice per program: ignoring it holds for that program only."""
+    return f"{NAMES_ISSUE_PREFIX}{entry_id}_{checksum:08x}"
+
+
+def clear_names_issues(hass, entry_id: str, *, keep: str | None = None) -> None:
+    """Drop the entry's "names are from the previous program" notices but ``keep``."""
+    from homeassistant.helpers import issue_registry as ir
+
+    prefix = f"{NAMES_ISSUE_PREFIX}{entry_id}_"
+    for domain, issue_id in list(ir.async_get(hass).issues):
+        if domain == DOMAIN and issue_id.startswith(prefix) and issue_id != keep:
+            ir.async_delete_issue(hass, DOMAIN, issue_id)
 
 
 async def read_program_checksum(client) -> int | None:
@@ -64,9 +87,49 @@ class ProgramWatcher:
             if value is not None:
                 if self.baseline is None:
                     self.baseline = value
+                    # Also catches a program sent while Home Assistant was off.
+                    self.check_names(value)
                 elif value != self.baseline:
                     await self.handle_change()
             await self._sleep(CHECK_INTERVAL)
+
+    def check_names(self, checksum: int) -> None:
+        """Raise the "names may be out of date" notice, or clear it.
+
+        The names carry the checksum of the program they were loaded for. An
+        entry that has none yet (stored before this existed, or the read failed
+        then) takes the current one: nothing says its names are old.
+        """
+        from homeassistant.helpers import issue_registry as ir
+
+        blob = self.entry.data.get(CONF_MAP) or {}
+        if not blob.get("entries"):
+            return  # no names to go out of date
+        loaded_for = blob.get("program_checksum")
+        if loaded_for is None:
+            self.hass.config_entries.async_update_entry(
+                self.entry,
+                data={**self.entry.data, CONF_MAP: {**blob, "program_checksum": checksum}},
+            )
+            return
+        if loaded_for == checksum:
+            clear_names_issues(self.hass, self.entry.entry_id)
+            return
+        issue_id = names_issue_id(self.entry.entry_id, checksum)
+        clear_names_issues(self.hass, self.entry.entry_id, keep=issue_id)
+        LOGGER.info(
+            "The PLC runs another program (checksum %#010x) than the variable names "
+            "were loaded for (%#010x)", checksum, loaded_for,
+        )
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=True,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="names_outdated",
+            data={"entry_id": self.entry.entry_id, "program_checksum": checksum},
+        )
 
     async def _wait_until_stable(self) -> int | None:
         last, stable = None, 0.0
@@ -92,6 +155,8 @@ class ProgramWatcher:
         if any(e.from_program for e in self.catalog.entities):
             self._set_stale(True)
         value = await self._wait_until_stable()
+        if value is not None:
+            self.check_names(value)
         for delay in ATTEMPT_DELAYS:
             await self._sleep(delay)
             try:

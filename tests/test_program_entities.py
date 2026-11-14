@@ -228,7 +228,7 @@ async def test_watcher_settles_reloads_or_reports(monkeypatch):
         return None
 
     hass = SimpleNamespace(config_entries=SimpleNamespace(async_schedule_reload=reloads.append))
-    entry = SimpleNamespace(entry_id="e1")
+    entry = SimpleNamespace(entry_id="e1", data={})  # no variable names
 
     def watcher(inventories):
         coordinator = Coordinator()

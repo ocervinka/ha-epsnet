@@ -17,6 +17,7 @@ from dataclasses import dataclass
 import logging
 import zlib
 
+from . import program_watch
 from .catalog import EntityCatalog, build_catalog
 from .epsnet_udp import EpsnetError, EpsnetUdpClient, PlcBusyError
 from .models import PubEntry
@@ -38,6 +39,10 @@ class SetupResult:
     plc_ident: str | None
     address_count: int
     entries: tuple[PubEntry, ...] = ()
+    # Checksum of the program the PLC ran when the names were resolved (None
+    # when it could not be read). A later, different checksum means the names
+    # may be out of date (see ``program_watch``).
+    program_checksum: int | None = None
 
 
 def serialize_entries(entries: tuple[PubEntry, ...]) -> list[dict]:
@@ -98,6 +103,7 @@ def freeze_setup(result: SetupResult) -> dict:
         "source": result.source,
         "plc_ident": result.plc_ident,
         "crc": entries_crc(result.entries),
+        "program_checksum": result.program_checksum,
         "entries": serialize_entries(result.entries),
     }
 
@@ -178,4 +184,5 @@ async def run_setup(
         plc_ident=ident,
         address_count=len(entries),
         entries=tuple(entries),
+        program_checksum=await program_watch.read_program_checksum(client),
     )

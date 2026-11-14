@@ -275,6 +275,105 @@
     "program_changed": {
       "title": "EPSNET: PLC program changed",
       "description": "A new program was sent to the PLC, and its input/output layout could not be read again (the PLC may still be busy with the programming tool). Module channels placed from the program are unavailable until then. Reload the integration to try again."
+    },
+    "names_outdated": {
+      "title": "EPSNET: variable names are from the previous PLC program",
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "The PLC has a new program",
+            "description": "Home Assistant still uses the variable list of the previous program. Until it is loaded again:\n\n- lights, sockets and sensors you added are missing;\n- values and switching can be wrong if the new program placed variables elsewhere in the PLC's memory.\n\nEntities of variables that did not change stay, with their history.",
+            "menu_options": {
+              "reimport_plc": "Reload the names from the PLC",
+              "reimport_file": "Load the names from the new .pub file",
+              "keep": "Keep the current names"
+            },
+            "menu_option_descriptions": {
+              "reimport_plc": "Takes from a few seconds to a few minutes. The programming tool must not be connected to the PLC meanwhile.",
+              "reimport_file": "The file exported with the new program.",
+              "keep": "Only when the new program has exactly the same variables as the previous one."
+            }
+          },
+          "init_plc_busy": {
+            "title": "The PLC has a new program",
+            "description": "⚠️ The PLC is in use: another program is connected to it. Close it and try again.\n\nHome Assistant still uses the variable list of the previous program. Until it is loaded again:\n\n- lights, sockets and sensors you added are missing;\n- values and switching can be wrong if the new program placed variables elsewhere in the PLC's memory.\n\nEntities of variables that did not change stay, with their history.",
+            "menu_options": {
+              "reimport_plc": "Reload the names from the PLC",
+              "reimport_file": "Load the names from the new .pub file",
+              "keep": "Keep the current names"
+            },
+            "menu_option_descriptions": {
+              "reimport_plc": "Takes from a few seconds to a few minutes. The programming tool must not be connected to the PLC meanwhile.",
+              "reimport_file": "The file exported with the new program.",
+              "keep": "Only when the new program has exactly the same variables as the previous one."
+            }
+          },
+          "init_cannot_connect": {
+            "title": "The PLC has a new program",
+            "description": "⚠️ No answer from the PLC, so the variable names were not reloaded.\n\nHome Assistant still uses the variable list of the previous program. Until it is loaded again:\n\n- lights, sockets and sensors you added are missing;\n- values and switching can be wrong if the new program placed variables elsewhere in the PLC's memory.\n\nEntities of variables that did not change stay, with their history.",
+            "menu_options": {
+              "reimport_plc": "Reload the names from the PLC",
+              "reimport_file": "Load the names from the new .pub file",
+              "keep": "Keep the current names"
+            },
+            "menu_option_descriptions": {
+              "reimport_plc": "Takes from a few seconds to a few minutes. The programming tool must not be connected to the PLC meanwhile.",
+              "reimport_file": "The file exported with the new program.",
+              "keep": "Only when the new program has exactly the same variables as the previous one."
+            }
+          },
+          "init_no_map": {
+            "title": "The PLC has a new program",
+            "description": "⚠️ The PLC stores no variable names; the current ones were kept. Load them from a .pub file instead.\n\nHome Assistant still uses the variable list of the previous program. Until it is loaded again:\n\n- lights, sockets and sensors you added are missing;\n- values and switching can be wrong if the new program placed variables elsewhere in the PLC's memory.\n\nEntities of variables that did not change stay, with their history.",
+            "menu_options": {
+              "reimport_plc": "Reload the names from the PLC",
+              "reimport_file": "Load the names from the new .pub file",
+              "keep": "Keep the current names"
+            },
+            "menu_option_descriptions": {
+              "reimport_plc": "Takes from a few seconds to a few minutes. The programming tool must not be connected to the PLC meanwhile.",
+              "reimport_file": "The file exported with the new program.",
+              "keep": "Only when the new program has exactly the same variables as the previous one."
+            }
+          },
+          "reimport_plc": {
+            "title": "Reload the names from the PLC"
+          },
+          "reimport_file": {
+            "title": "Load variable names from a file",
+            "description": "Upload the `.pub` file that belongs to the program running in the PLC now. A `.piz` or `.zip` that contains it works too. If the file cannot be used, the current names are kept.",
+            "data": {
+              "map_file": "Choose file"
+            },
+            "submit": "Upload"
+          },
+          "reimport_file_run": {
+            "title": "Load variable names from a file"
+          },
+          "done_changed": {
+            "title": "Variable names reloaded",
+            "description": "Variables loaded: {variables}. New: {added}, removed: {removed}, moved in the PLC's memory: {moved}.\n\nThe integration is reloading with them.",
+            "submit": "Done"
+          },
+          "done_unchanged": {
+            "title": "The names are unchanged",
+            "description": "The new program has the same variables at the same places as before (variables: {variables}). Nothing had to change.",
+            "submit": "Done"
+          }
+        },
+        "progress": {
+          "read_names": "Reading variable names from the PLC… {progress}",
+          "match_file": "Matching the file to the PLC's modules…"
+        },
+        "error": {
+          "path_not_found": "The uploaded file could not be read.",
+          "invalid_pub": "The uploaded file is not a valid .pub file.",
+          "pub_no_match": "The file matches none of the PLC's modules. Is it from another project? The current names were kept."
+        },
+        "abort": {
+          "entry_gone": "This PLC is no longer set up in Home Assistant."
+        }
+      }
     }
   },
   "entity": {

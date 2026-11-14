@@ -92,7 +92,15 @@ A question is asked only when the PLC cannot answer it:
 
 The PLC's modules are always scanned live, so entities are created only for hardware that is
 actually there. The variable names are stored in the config entry and are not re-read on their
-own: after changing the PLC program, use **Configure → Reload variable names from the PLC**, or
+own, because reading them takes the PLC's management connection. When the PLC gets a new program,
+a notice appears under **Settings → Repairs**: until the names are loaded again, lights and sensors
+you added are missing, and values or switching can be wrong if the new program placed variables
+elsewhere in the PLC's memory. The notice offers to reload the names from the PLC (or to load the
+new `.pub` file, when the names came from a file or the PLC stores none), or to keep the current
+ones when the new program has exactly the same variables. After a reload it shows how many
+variables are new, removed or moved.
+
+The same can be done at any time with **Configure → Reload variable names from the PLC**, or
 **Load variable names from a .pub file** when the PLC stores none or an old version (a program
 loaded with Mosaic). Either way the entry and its entity IDs stay; a repair notice tells you when
 the names actually changed, and a file that pairs with none of the PLC's modules is refused.

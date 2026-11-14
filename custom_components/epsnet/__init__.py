@@ -427,8 +427,11 @@ async def async_remove_entry(hass, entry) -> None:
     """Drop the Repairs issues a deleted entry left behind."""
     from homeassistant.helpers import issue_registry as ir
 
+    from .program_watch import clear_names_issues
+
     for prefix in _ENTRY_ISSUE_PREFIXES:
         ir.async_delete_issue(hass, DOMAIN, f"{prefix}_{entry.entry_id}")
+    clear_names_issues(hass, entry.entry_id)
 
 
 async def async_unload_entry(hass, entry) -> bool:

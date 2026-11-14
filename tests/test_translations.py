@@ -69,3 +69,22 @@ def test_every_menu_option_has_a_label() -> None:
     for step in STRINGS["options"]["step"].values():
         if "menu_options" in step:
             assert step["menu_options"] == STRINGS["options"]["step"]["init"]["menu_options"]
+
+
+def test_repair_flow_has_all_its_texts() -> None:
+    """The "new PLC program" repair flow: steps, warning variants, menu, progress."""
+    flow = STRINGS["issues"]["names_outdated"]["fix_flow"]
+    repairs = (COMPONENT / "repairs.py").read_text(encoding="utf-8")
+    shown = set(re.findall(r'"(done_\w+)"', repairs)) | {
+        "init", "reimport_plc", "reimport_file", "reimport_file_run",
+    }
+    assert shown <= set(flow["step"]), shown - set(flow["step"])
+    options = set(re.findall(r'"(reimport_plc|reimport_file|keep)"', repairs))
+    for step_id in ("init", "init_plc_busy", "init_cannot_connect", "init_no_map"):
+        step = flow["step"][step_id]
+        assert set(step["menu_options"]) == options == set(step["menu_option_descriptions"])
+    # The shared reload steps name these progress texts and errors.
+    assert {"read_names", "match_file"} <= set(flow["progress"])
+    assert {"path_not_found", "invalid_pub", "pub_no_match"} <= set(flow["error"])
+    assert set(re.findall(r'async_abort\(reason="(\w+)"\)', repairs)) <= set(flow["abort"])
+

@@ -627,6 +627,10 @@ async def test_removing_the_entry_removes_its_repairs(hass: HomeAssistant) -> No
         hass, DOMAIN, f"map_changed_{entry.entry_id}", is_fixable=False,
         severity=ir.IssueSeverity.WARNING, translation_key="map_changed",
     )
+    ir.async_create_issue(
+        hass, DOMAIN, f"names_outdated_{entry.entry_id}_0000abcd", is_fixable=True,
+        severity=ir.IssueSeverity.WARNING, translation_key="names_outdated",
+    )
     assert issues.async_get_issue(DOMAIN, f"no_variable_map_{entry.entry_id}")
 
     await hass.config_entries.async_remove(entry.entry_id)
@@ -764,3 +768,230 @@ async def test_entries_from_before_keep_the_fast_lane_off(hass: HomeAssistant) -
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
         assert not hass.data[DOMAIN][entry.entry_id].coordinator.fast_lane_active
+
+
+# -- The PLC got a new program: the "names are from the previous program" notice --
+
+_CHECKSUM = "custom_components.epsnet.program_watch.read_program_checksum"
+
+
+def _watcher(hass: HomeAssistant, entry):
+    from custom_components.epsnet.program_watch import ProgramWatcher
+
+    runtime = hass.data[DOMAIN][entry.entry_id]
+    return ProgramWatcher(hass, entry, runtime.client, runtime.coordinator, runtime.catalog)
+
+
+def _names_issue(hass: HomeAssistant, entry):
+    """The entry's one "names are from the previous program" notice, or None."""
+    from homeassistant.helpers import issue_registry as ir
+
+    found = [
+        issue for (domain, issue_id), issue in ir.async_get(hass).issues.items()
+        if domain == DOMAIN and issue_id.startswith(f"names_outdated_{entry.entry_id}_")
+    ]
+    assert len(found) <= 1
+    return found[0] if found else None
+
+
+async def _open_names_repair(hass: HomeAssistant, entry) -> tuple:
+    manager = hass.data["repairs"]["flow_manager"]
+    result = await manager.async_init(
+        DOMAIN, data={"issue_id": _names_issue(hass, entry).issue_id}
+    )
+    assert result["type"] == FlowResultType.MENU
+    return manager, result
+
+
+async def _finish_repair_progress(hass: HomeAssistant, manager, result: dict) -> dict:
+    assert result["type"] == FlowResultType.SHOW_PROGRESS
+    await hass.async_block_till_done()
+    return await manager.async_configure(result["flow_id"])
+
+
+async def test_names_remember_their_program_and_a_new_one_raises_a_notice(
+    hass: HomeAssistant,
+) -> None:
+    with _patch_client(AsyncMock()), patch(_CHECKSUM, AsyncMock(return_value=0x1111)):
+        entry = (await _run_discover_flow(hass))["result"]
+        await hass.async_block_till_done()
+        assert entry.data["map"]["program_checksum"] == 0x1111
+        watcher = _watcher(hass, entry)
+
+        watcher.check_names(0x1111)  # the program the names were loaded for
+        assert _names_issue(hass, entry) is None
+
+        watcher.check_names(0x2222)
+        issue = _names_issue(hass, entry)
+        assert issue.is_fixable and issue.translation_key == "names_outdated"
+        assert issue.data == {"entry_id": entry.entry_id, "program_checksum": 0x2222}
+
+        # ignored: stays ignored for this program, also when it is seen again
+        from homeassistant.helpers import issue_registry as ir
+
+        ir.async_ignore_issue(hass, DOMAIN, issue.issue_id, True)
+        watcher.check_names(0x2222)
+        assert _names_issue(hass, entry).dismissed_version is not None
+        # yet another program: a notice of its own, and the old one is gone
+        watcher.check_names(0x3333)
+        issue = _names_issue(hass, entry)
+        assert issue.dismissed_version is None and issue.data["program_checksum"] == 0x3333
+
+        watcher.check_names(0x1111)  # the old program is back
+        assert _names_issue(hass, entry) is None
+
+
+async def test_names_stored_before_take_the_current_program(hass: HomeAssistant) -> None:
+    """Names without a checksum (older versions) are not called out of date."""
+    with _patch_client(AsyncMock()):
+        entry = (await _run_discover_flow(hass))["result"]
+        await hass.async_block_till_done()
+        assert entry.data["map"]["program_checksum"] is None  # could not be read
+
+        _watcher(hass, entry).check_names(0x2222)
+        assert _names_issue(hass, entry) is None
+        assert entry.data["map"]["program_checksum"] == 0x2222
+
+
+async def test_keeping_the_names_from_the_notice(hass: HomeAssistant) -> None:
+    with _patch_client(AsyncMock()), patch(_CHECKSUM, AsyncMock(return_value=0x1111)):
+        entry = (await _run_discover_flow(hass))["result"]
+        await hass.async_block_till_done()
+        names = entry.data["map"]["entries"]
+        _watcher(hass, entry).check_names(0x2222)
+
+        manager, result = await _open_names_repair(hass, entry)
+        # the names came from the PLC, so the file is not asked for
+        assert (result["step_id"], result["menu_options"]) == ("init", ["reimport_plc", "keep"])
+        result = await manager.async_configure(result["flow_id"], {"next_step_id": "keep"})
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+
+        assert _names_issue(hass, entry) is None
+        assert entry.data["map"]["program_checksum"] == 0x2222
+        assert entry.data["map"]["entries"] == names
+        _watcher(hass, entry).check_names(0x2222)
+        assert _names_issue(hass, entry) is None
+
+
+async def test_reloading_the_names_from_the_notice_shows_what_changed(
+    hass: HomeAssistant,
+) -> None:
+    from dataclasses import replace
+
+    from homeassistant.helpers import issue_registry as ir
+
+    checksum = AsyncMock(return_value=0x1111)
+    extra = replace(SYNTH_ENTRIES[0], name=SYNTH_ENTRIES[0].name + "_added")
+    # one variable more, and the last one now sits elsewhere in the PLC's memory
+    moved = replace(SYNTH_ENTRIES[-1], address=SYNTH_ENTRIES[-1].address + 1000)
+
+    async def _fetch_new(*_a, **_k):
+        await asyncio.sleep(0)
+        return ("SIM PLC", SYNTH_ENTRIES[:-1] + (moved, extra))
+
+    with _patch_client(AsyncMock()), patch(_CHECKSUM, checksum):
+        entry = (await _run_discover_flow(hass))["result"]
+        await hass.async_block_till_done()
+        checksum.return_value = 0x2222
+        _watcher(hass, entry).check_names(0x2222)
+
+        manager, result = await _open_names_repair(hass, entry)
+        result = await manager.async_configure(
+            result["flow_id"], {"next_step_id": "reimport_plc"}
+        )
+        # unchanged names: said so, and the entry is left running
+        result = await _finish_repair_progress(hass, manager, result)
+        assert (result["type"], result["step_id"]) == (FlowResultType.FORM, "done_unchanged")
+        assert result["description_placeholders"]["variables"] == str(len(SYNTH_ENTRIES))
+        result = await manager.async_configure(result["flow_id"], {})
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert _names_issue(hass, entry) is None
+        assert entry.data["map"]["program_checksum"] == 0x2222
+
+        # the next program adds a variable
+        checksum.return_value = 0x3333
+        _watcher(hass, entry).check_names(0x3333)
+        manager, result = await _open_names_repair(hass, entry)
+        with patch(_CLIENT + ".async_fetch_pub_from_plc", AsyncMock(side_effect=_fetch_new)):
+            result = await manager.async_configure(
+                result["flow_id"], {"next_step_id": "reimport_plc"}
+            )
+            result = await _finish_repair_progress(hass, manager, result)
+        assert (result["type"], result["step_id"]) == (FlowResultType.FORM, "done_changed")
+        assert result["description_placeholders"] == {
+            "variables": str(len(SYNTH_ENTRIES) + 1), "added": "1", "removed": "0", "moved": "1",
+        }
+        result = await manager.async_configure(result["flow_id"], {})
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+
+        assert _names_issue(hass, entry) is None
+        assert len(entry.data["map"]["entries"]) == len(SYNTH_ENTRIES) + 1
+        assert entry.data["map"]["program_checksum"] == 0x3333
+        # the outcome was shown in the dialog; no second notice about it
+        assert ir.async_get(hass).async_get_issue(DOMAIN, f"map_changed_{entry.entry_id}") is None
+
+
+async def test_notice_reload_when_the_plc_is_in_use_or_stores_no_names(
+    hass: HomeAssistant, tmp_path
+) -> None:
+    from custom_components.epsnet.epsnet_udp import PlcBusyError
+
+    async def _busy(*_a, **_k):
+        await asyncio.sleep(0)
+        raise PlcBusyError("in use")
+
+    async def _nothing(*_a, **_k):
+        await asyncio.sleep(0)
+        return ("SIM PLC", ())
+
+    checksum = AsyncMock(return_value=0x1111)
+    with _patch_client(AsyncMock()), patch(_CHECKSUM, checksum):
+        entry = (await _run_discover_flow(hass))["result"]
+        await hass.async_block_till_done()
+        names = entry.data["map"]["entries"]
+        checksum.return_value = 0x2222
+        _watcher(hass, entry).check_names(0x2222)
+        manager, result = await _open_names_repair(hass, entry)
+
+        with patch(_CLIENT + ".async_fetch_pub_from_plc", AsyncMock(side_effect=_busy)):
+            result = await manager.async_configure(
+                result["flow_id"], {"next_step_id": "reimport_plc"}
+            )
+            result = await _finish_repair_progress(hass, manager, result)
+        assert (result["step_id"], result["menu_options"]) == (
+            "init_plc_busy", ["reimport_plc", "keep"],
+        )
+
+        with patch(_CLIENT + ".async_fetch_pub_from_plc", AsyncMock(side_effect=_nothing)):
+            result = await manager.async_configure(
+                result["flow_id"], {"next_step_id": "reimport_plc"}
+            )
+            result = await _finish_repair_progress(hass, manager, result)
+        # the PLC stores none (any more): now the new program's file is asked for
+        assert (result["step_id"], result["menu_options"]) == (
+            "init_no_map", ["reimport_file", "keep"],
+        )
+        assert entry.data["map"]["entries"] == names and _names_issue(hass, entry) is not None
+
+        result = await manager.async_configure(
+            result["flow_id"], {"next_step_id": "reimport_file"}
+        )
+        assert (result["type"], result["step_id"]) == (FlowResultType.FORM, "reimport_file")
+        with _patch_upload(EXACT_MODEL_FIXTURE, tmp_path):
+            result = await manager.async_configure(
+                result["flow_id"], {"map_file": "0123456789abcdef0123456789abcdef"}
+            )
+            result = await _finish_repair_progress(hass, manager, result)
+        assert result["step_id"] == "done_unchanged"
+        result = await manager.async_configure(result["flow_id"], {})
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert _names_issue(hass, entry) is None
+        assert (entry.data["map"]["source"], entry.data["map"]["program_checksum"]) == ("file", 0x2222)
+
+        # names from a file: the next notice asks for the file straight away
+        _watcher(hass, entry).check_names(0x3333)
+        manager, result = await _open_names_repair(hass, entry)
+        assert result["menu_options"] == ["reimport_file", "keep"]
+

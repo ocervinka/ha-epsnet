@@ -275,6 +275,105 @@
     "program_changed": {
       "title": "EPSNET: program v PLC sa zmenil",
       "description": "Do PLC bol nahraný nový program, ale rozloženie jeho vstupov a výstupov sa zatiaľ nepodarilo načítať (PLC možno ešte používa programovací nástroj). Entity vytvorené podľa programu PLC sú dovtedy nedostupné. Skúste integráciu znovu načítať."
+    },
+    "names_outdated": {
+      "title": "EPSNET: názvy premenných sú z predchádzajúceho programu PLC",
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "V PLC je nový program",
+            "description": "Home Assistant stále používa zoznam premenných z predchádzajúceho programu. Kým ho nenačítate znova:\n\n- chýbajú svetlá, zásuvky a snímače, ktoré ste pridali;\n- hodnoty aj ovládanie môžu byť chybné, ak nový program umiestnil premenné v pamäti PLC inde.\n\nEntity premenných, ktoré sa nezmenili, zostanú aj s históriou.",
+            "menu_options": {
+              "reimport_plc": "Načítať názvy znova z PLC",
+              "reimport_file": "Načítať názvy z nového súboru .pub",
+              "keep": "Ponechať súčasné názvy"
+            },
+            "menu_option_descriptions": {
+              "reimport_plc": "Trvá niekoľko sekúnd až niekoľko minút. Programovací nástroj pritom nesmie byť k PLC pripojený.",
+              "reimport_file": "Súbor exportovaný s novým programom.",
+              "keep": "Len ak má nový program úplne rovnaké premenné ako ten predchádzajúci."
+            }
+          },
+          "init_plc_busy": {
+            "title": "V PLC je nový program",
+            "description": "⚠️ PLC práve používa iný program. Zatvorte ho a skúste to znova.\n\nHome Assistant stále používa zoznam premenných z predchádzajúceho programu. Kým ho nenačítate znova:\n\n- chýbajú svetlá, zásuvky a snímače, ktoré ste pridali;\n- hodnoty aj ovládanie môžu byť chybné, ak nový program umiestnil premenné v pamäti PLC inde.\n\nEntity premenných, ktoré sa nezmenili, zostanú aj s históriou.",
+            "menu_options": {
+              "reimport_plc": "Načítať názvy znova z PLC",
+              "reimport_file": "Načítať názvy z nového súboru .pub",
+              "keep": "Ponechať súčasné názvy"
+            },
+            "menu_option_descriptions": {
+              "reimport_plc": "Trvá niekoľko sekúnd až niekoľko minút. Programovací nástroj pritom nesmie byť k PLC pripojený.",
+              "reimport_file": "Súbor exportovaný s novým programom.",
+              "keep": "Len ak má nový program úplne rovnaké premenné ako ten predchádzajúci."
+            }
+          },
+          "init_cannot_connect": {
+            "title": "V PLC je nový program",
+            "description": "⚠️ PLC neodpovedá, názvy premenných sa preto nenačítali.\n\nHome Assistant stále používa zoznam premenných z predchádzajúceho programu. Kým ho nenačítate znova:\n\n- chýbajú svetlá, zásuvky a snímače, ktoré ste pridali;\n- hodnoty aj ovládanie môžu byť chybné, ak nový program umiestnil premenné v pamäti PLC inde.\n\nEntity premenných, ktoré sa nezmenili, zostanú aj s históriou.",
+            "menu_options": {
+              "reimport_plc": "Načítať názvy znova z PLC",
+              "reimport_file": "Načítať názvy z nového súboru .pub",
+              "keep": "Ponechať súčasné názvy"
+            },
+            "menu_option_descriptions": {
+              "reimport_plc": "Trvá niekoľko sekúnd až niekoľko minút. Programovací nástroj pritom nesmie byť k PLC pripojený.",
+              "reimport_file": "Súbor exportovaný s novým programom.",
+              "keep": "Len ak má nový program úplne rovnaké premenné ako ten predchádzajúci."
+            }
+          },
+          "init_no_map": {
+            "title": "V PLC je nový program",
+            "description": "⚠️ V PLC nie sú názvy premenných uložené, zostali preto tie doterajšie. Načítajte ich zo súboru .pub.\n\nHome Assistant stále používa zoznam premenných z predchádzajúceho programu. Kým ho nenačítate znova:\n\n- chýbajú svetlá, zásuvky a snímače, ktoré ste pridali;\n- hodnoty aj ovládanie môžu byť chybné, ak nový program umiestnil premenné v pamäti PLC inde.\n\nEntity premenných, ktoré sa nezmenili, zostanú aj s históriou.",
+            "menu_options": {
+              "reimport_plc": "Načítať názvy znova z PLC",
+              "reimport_file": "Načítať názvy z nového súboru .pub",
+              "keep": "Ponechať súčasné názvy"
+            },
+            "menu_option_descriptions": {
+              "reimport_plc": "Trvá niekoľko sekúnd až niekoľko minút. Programovací nástroj pritom nesmie byť k PLC pripojený.",
+              "reimport_file": "Súbor exportovaný s novým programom.",
+              "keep": "Len ak má nový program úplne rovnaké premenné ako ten predchádzajúci."
+            }
+          },
+          "reimport_plc": {
+            "title": "Načítať názvy znova z PLC"
+          },
+          "reimport_file": {
+            "title": "Načítať názvy premenných zo súboru",
+            "description": "Nahrajte súbor `.pub` k programu, ktorý práve beží v PLC. Môžete nahrať aj archív `.piz` alebo `.zip`, v ktorom je súbor uložený. Ak sa súbor nedá použiť, doterajšie názvy zostanú.",
+            "data": {
+              "map_file": "Vybrať súbor"
+            },
+            "submit": "Nahrať"
+          },
+          "reimport_file_run": {
+            "title": "Načítať názvy premenných zo súboru"
+          },
+          "done_changed": {
+            "title": "Názvy premenných boli načítané znova",
+            "description": "Načítané premenné: {variables}. Nové: {added}, odobraté: {removed}, presunuté v pamäti PLC: {moved}.\n\nIntegrácia sa s nimi práve znovu načítava.",
+            "submit": "Hotovo"
+          },
+          "done_unchanged": {
+            "title": "Názvy sa nezmenili",
+            "description": "Nový program má rovnaké premenné na rovnakých miestach ako doteraz (premenných: {variables}). Nič sa meniť nemuselo.",
+            "submit": "Hotovo"
+          }
+        },
+        "progress": {
+          "read_names": "Načítavam názvy premenných z PLC… {progress}",
+          "match_file": "Porovnávam súbor s modulmi PLC…"
+        },
+        "error": {
+          "path_not_found": "Nahraný súbor sa nepodarilo prečítať.",
+          "invalid_pub": "Nahraný súbor nie je platný súbor .pub.",
+          "pub_no_match": "Súbor nezodpovedá žiadnemu modulu tohto PLC. Nie je z iného projektu? Doterajšie názvy zostali bez zmeny."
+        },
+        "abort": {
+          "entry_gone": "Toto PLC už v Home Assistant nie je nastavené."
+        }
+      }
     }
   },
   "entity": {

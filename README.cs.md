@@ -79,11 +79,19 @@ Na další věci se nastavení ptá jen tehdy, když je z PLC samo nezjistí:
 - **Nahraný soubor neodpovídá žádnému z modulů:** nejspíš je z jiného projektu. Nahrajte jiný, nebo
   ho použijte i tak.
 
-Názvy proměnných se uloží do konfigurace integrace a samy se znovu nenačítají. Po změně programu
-v PLC zvolte **Nastavit → Znovu načíst názvy proměnných z PLC**, nebo **Načíst názvy proměnných ze
-souboru .pub**, když v PLC názvy nejsou nebo jsou zastaralé (program nahraný z Mosaicu). Integrace
-i ID entit zůstanou. Pokud se názvy opravdu změnily, objeví se upozornění v Opravách. Soubor,
-který neodpovídá žádnému modulu PLC, integrace odmítne. V **Nastavit → Rychlost čtení** lze změnit
+Názvy proměnných se uloží do konfigurace integrace a samy se znovu nenačítají, protože jejich
+čtení obsadí servisní spojení s PLC. Když PLC dostane nový program, objeví se upozornění
+v **Nastavení → Opravy**: dokud názvy nenačtete znovu, chybí světla a čidla, která jste přidali,
+a hodnoty i ovládání mohou být chybné, pokud nový program umístil proměnné v paměti PLC jinam.
+Upozornění nabídne načíst názvy znovu z PLC (nebo nahrát nový soubor `.pub`, pokud názvy pocházejí
+ze souboru nebo v PLC žádné nejsou), případně stávající názvy ponechat, když má nový program úplně
+stejné proměnné. Po načtení ukáže, kolik proměnných přibylo, ubylo a kolik se jich přesunulo.
+
+Totéž jde udělat kdykoli ručně: **Nastavit → Znovu načíst názvy proměnných z PLC**, nebo **Načíst
+názvy proměnných ze souboru .pub**, když v PLC názvy nejsou nebo jsou zastaralé (program nahraný
+z Mosaicu). Integrace i ID entit zůstanou. Pokud se názvy opravdu změnily, objeví se upozornění
+v Opravách. Soubor, který neodpovídá žádnému modulu PLC, integrace odmítne. V **Nastavit → Rychlost
+čtení** lze změnit
 pauzu po přečtení všech hodnot (výchozí 500 ms) a interval čtení tlačítek a čidel (u nových
 instalací 100 ms); formulář ukazuje i doby čtení změřené na vaší instalaci.
 
