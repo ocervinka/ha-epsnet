@@ -479,15 +479,19 @@ class DetectedDevice:
     entry_names: tuple[str, ...] = ()
     entry_groups: tuple[DetectedDeviceEntryGroup, ...] = ()
     entity_keys: tuple[str, ...] = ()
+    # how the map's variables found their module: "address" (they sit in its
+    # inputs / outputs) or "order" (by name and module order, where the PLC
+    # program's layout does not place them)
+    paired_by: str | None = None
 
     @property
     def registry_keys(self) -> tuple[str, ...]:
         """Return the stable identifiers for the Home Assistant device registry.
 
-        A device from the variable map is identified by its map key only: which
-        CIB slot it pairs with is derived, and must not change its identity.
-        Modules not in the map are identified by their slot (``key`` is the
-        runtime registry key for them).
+        A device named by the variable map is identified by its map key only:
+        which CIB slot it pairs with is derived, and must not change its
+        identity. Modules the map gives no name are identified by their slot
+        (``key`` is the runtime registry key for them).
         """
         return (self.key,)
 
@@ -539,6 +543,8 @@ class EntityCatalog:
     unsupported_runtime_devices: tuple[RuntimeDiscoveredDevice, ...] = ()
     # per program device line: what was made of it (diagnostics)
     program_report: tuple[dict[str, object], ...] = ()
+    # inputs / outputs placed from the program that took a map variable's name
+    channels_named_by_map: int = 0
 
     def entities_for_platform(self, platform: str) -> tuple[EntitySpec, ...]:
         """Return all entity specs for one Home Assistant platform."""

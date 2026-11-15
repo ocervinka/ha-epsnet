@@ -5,7 +5,8 @@ a meaning from the module's descriptor (its data items in conversion-code
 order). Entities are keyed by hardware identity, never by X/Y address:
 ``<master rack>_<master slot>_<hw code>_<serial>_<channel>``. Outputs are
 read-only here: the PLC program rewrites Y every cycle, so they are shown, not
-switched.
+switched. A variable map names them by address: a channel takes the name of the
+map variable sitting exactly where it does.
 """
 
 from __future__ import annotations
@@ -29,6 +30,13 @@ from .runtime_registry import RUNTIME_MODEL_INFOS_BY_CODE
 _CHILD_TABLE_POINTER_OFFSET = 0x40
 PROGRAM_ENTITY_PREFIX = "io_"
 
+# Bytes a value variable of the map takes, by its data type.
+_VALUE_SIZES = {
+    "BYTE": 1, "USINT": 1, "SINT": 1,
+    "WORD": 2, "INT": 2, "UINT": 2,
+    "REAL": 4,
+}
+
 # role -> (platform, device_class, unit, diagnostic)
 _ROLES: dict[str, tuple[str, str | None, str | None, bool]] = {
     "button": ("binary_sensor", None, None, False),
@@ -51,6 +59,15 @@ class ProgramEntities:
     specs: list[EntitySpec] = field(default_factory=list)
     devices: dict[str, DetectedDevice] = field(default_factory=dict)
     report: list[dict[str, object]] = field(default_factory=list)
+    named: int = 0  # channels that took a map variable's name
+
+
+@dataclass(frozen=True, slots=True)
+class ModulePlace:
+    """Where the program puts one scanned module's inputs and outputs."""
+
+    runtime: RuntimeDiscoveredDevice
+    image_bytes: frozenset[tuple[str, int]]  # (zone, byte address)
 
 
 def _child_table_offset(device: RuntimeDiscoveredDevice, table_address: int) -> int | None:
@@ -106,6 +123,33 @@ def pair_modules(
     return pairs
 
 
+def module_places(
+    layout: ProgramIoLayout | None, runtime_devices: tuple[RuntimeDiscoveredDevice, ...]
+) -> tuple[ModulePlace, ...]:
+    """The scanned modules whose data the program places, in the program's order.
+
+    This is what ties a map variable to a module: the variable's address lies
+    in the module's part of the X/Y images. Empty without a usable layout.
+    """
+    if layout is None or layout.error:
+        return ()
+    pairs = pair_modules(layout, runtime_devices)
+    places: list[ModulePlace] = []
+    for master in layout.masters:
+        for line in master.devices:
+            runtime = pairs.get((master.rack, master.slot, line.line))
+            if line.kind != "device" or runtime is None:
+                continue
+            image_bytes = frozenset(
+                (item.zone, item.address + offset)
+                for item in line.items
+                for offset in range(item.size)
+            )
+            if image_bytes:
+                places.append(ModulePlace(runtime, image_bytes))
+    return tuple(places)
+
+
 def _fits(definition: ModuleItem, item: ProgramItem) -> bool:
     bits = [c.bit for c in definition.channels if c.bit is not None]
     if bits:
@@ -159,39 +203,63 @@ def _covered(entries: tuple[PubEntry, ...]) -> set[tuple[str, int, int | None]]:
     return {(e.register, e.address, e.bit) for e in entries if e.register in ("X", "Y")}
 
 
+def _map_name(
+    names: dict[tuple[str, int, int | None], tuple[str, str]],
+    zone: str,
+    address: int,
+    bit: int | None,
+    data_type: str,
+) -> str | None:
+    """The map's name for a channel: a variable of the same kind at its address."""
+    named = names.get((zone, address, bit))
+    if named is None:
+        return None
+    name, map_type = named
+    map_type = map_type.upper()
+    if (map_type == "BOOL") != (data_type == "BOOL"):
+        return None
+    if data_type != "BOOL" and _VALUE_SIZES.get(map_type) != _VALUE_SIZES[data_type]:
+        return None  # e.g. a byte variable laid over the start of a REAL
+    return name
+
+
 def build_program_entities(
     layout: ProgramIoLayout | None,
     runtime_devices: tuple[RuntimeDiscoveredDevice, ...],
     devices_by_key: dict[str, DetectedDevice],
     map_entries: tuple[PubEntry, ...],
     *,
-    keep_named: dict[tuple[str, int, int | None], str] | None = None,
+    keep_all: bool = False,
+    names: dict[tuple[str, int, int | None], tuple[str, str]] | None = None,
     shown: tuple[PubEntry, ...] | None = None,
     shown_devices: set[str] | None = None,
 ) -> ProgramEntities:
     """Entities for the channels the program places.
 
     Default: only the channels no map entity shows (``shown``: the map entries
-    the map's entities read; all map entries if not given); with a map they start
-    disabled (nothing new appears), without one everything but diagnostic
-    channels starts enabled.
+    the map's entities read; all map entries if not given). Without a map
+    everything but diagnostic channels starts enabled. With one, the channels
+    of a module in ``shown_devices`` (the map's entities already show it) start
+    disabled, so nothing unasked appears; other modules' channels start enabled.
 
-    ``keep_named`` (an entry first set up without a map, map added later): every
-    channel keeps its entity, enabled as before; the map only supplies display
-    names, keyed by (register, address, bit).
+    ``keep_all`` (an entry first set up without a map, map added later): every
+    channel keeps its entity, enabled as before.
+
+    ``names``: what the map calls the inputs and outputs, as (name, data type)
+    keyed by (register, address, bit). A channel takes the name of the variable
+    of its kind at its address, whatever that name looks like.
     """
     result = ProgramEntities()
     if layout is None or layout.error:
         return result
-    if keep_named is not None:
+    if keep_all:
         covered: set[tuple[str, int, int | None]] = set()
         enabled = True
-        names = keep_named
     else:
         # a channel counts as covered only when a map entity already shows it
         covered = _covered(map_entries if shown is None else shown)
         enabled = not map_entries
-        names = {}
+    names = names or {}
     device_key_by_slot = {
         (d.runtime_group_token, d.runtime_child_token): key
         for key, d in devices_by_key.items()
@@ -291,6 +359,9 @@ def _add_device(result, master: ProgramMaster, line: ProgramDevice, pairs,
                     continue
                 platform, device_class, unit, diagnostic = _ROLES[channel.role]
                 key = f"{PROGRAM_ENTITY_PREFIX}{stem}_{channel.key}"
+                named = _map_name(names, item.zone, address, bit, data_type)
+                if named is not None:
+                    result.named += 1
                 result.entries[key] = PubEntry(
                     name=key,
                     register=item.zone,
@@ -306,7 +377,7 @@ def _add_device(result, master: ProgramMaster, line: ProgramDevice, pairs,
                     EntitySpec(
                         key=key,
                         platform=platform,
-                        name=names.get((item.zone, address, bit), channel.label),
+                        name=named or channel.label,
                         state_name=key,
                         value_kind=ValueKind.BOOL if data_type == "BOOL" else (
                             ValueKind.FLOAT if data_type == "REAL" else ValueKind.INT),

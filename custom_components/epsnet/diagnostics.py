@@ -55,6 +55,9 @@ def _pub_device_snapshot(device: DetectedDevice) -> dict[str, object]:
         "device_key": device.key,
         "registry_keys": list(device.registry_keys),
         "device_name": device.name,
+        # how the map's variables found this module: "address" (they lie in its
+        # inputs / outputs) or "order" (by name and module order)
+        "paired_by": device.paired_by,
         "type_key": device.type_key,
         "model": device.model,
         "manufacturer": device.manufacturer,
@@ -109,7 +112,8 @@ def _runtime_device_snapshot(
             "trailer_word": _hex16(runtime_device.exact_descriptor.trailer_word),
             "raw_hex": runtime_device.exact_descriptor.raw_hex,
         }
-    if matched_device is None or matched_device.discovery_source == "epsnet_runtime_only":
+    if matched_device is None or not matched_device.entry_names:
+        # the map says nothing about this module
         snapshot["pub_match"] = None
     else:
         snapshot["pub_match"] = _pub_device_snapshot(matched_device)
@@ -140,6 +144,8 @@ def build_catalog_snapshot(
             "map_path": map_path,
             "pub_enrichment_active": bool(real_entries),
             "pub_entry_count": len(real_entries),
+            # inputs / outputs placed from the program that carry a map variable's name
+            "channels_named_by_map": catalog.channels_named_by_map,
         },
         "controller_identity": catalog.runtime_inventory.controller_identity,
         "root_identity": catalog.runtime_inventory.root_identity,
@@ -311,6 +317,9 @@ _KEEP_SUBSTRINGS = ("pir", "magnet", "light", "plug")
 _KEEP_WORDS = frozenset({"state", "on", "off", "trig", "output", "input", "sw", "dimmer", "analog"})
 _SHORT_CODE = re.compile(r"[A-Za-z]{1,3}\d+[A-Za-z]?")
 _TOKEN = re.compile(r"[A-Za-z0-9]+")
+# the words of a token that mixes cases (KitchenDoor2 -> Kitchen, Door2)
+_MIXED_CASE = re.compile(r"[a-z][A-Z]")
+_CASE_WORD = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+\d*|[A-Z]+\d*|\d+")
 _NAME_KEYS = frozenset({
     "entries", "entry_names", "entity_keys", "device_key", "device_name", "registry_keys",
     "pub_entry", "pub_entries",
@@ -318,13 +327,42 @@ _NAME_KEYS = frozenset({
 
 
 def _keep_word(word: str) -> bool:
-    lower = word.lower()
     return (
         word.isdigit()
-        or lower in _KEEP_WORDS
-        or any(k in lower for k in _KEEP_SUBSTRINGS)
+        or word.lower() in _KEEP_WORDS
         or _SHORT_CODE.fullmatch(word) is not None
     )
+
+
+def _own_words(token: str) -> list[tuple[str, bool]]:
+    """One run of letters and digits as (text, is the author's own wording).
+
+    A name need not separate its words with underscores: a token that mixes
+    cases is taken apart at its capitals, and a word the entity rules look for
+    is kept also inside a longer one (``kitchenlight`` -> ``kitchen`` + ``light``).
+    """
+    words = _CASE_WORD.findall(token) if _MIXED_CASE.search(token) else [token]
+    parts: list[tuple[str, bool]] = []
+
+    def split(word: str) -> None:
+        if not word:
+            return
+        if _keep_word(word):
+            parts.append((word, False))
+            return
+        lower = word.lower()
+        found = [(lower.find(k), k) for k in _KEEP_SUBSTRINGS if k in lower]
+        if not found:
+            parts.append((word, True))
+            return
+        at, kept = min(found)
+        split(word[:at])
+        parts.append((word[at : at + len(kept)], False))
+        split(word[at + len(kept) :])
+
+    for word in words:
+        split(word)
+    return parts
 
 
 def anonymize_names(data: dict[str, object], names: list[str]) -> dict[str, object]:
@@ -337,17 +375,21 @@ def anonymize_names(data: dict[str, object], names: list[str]) -> dict[str, obje
     """
     mapping: dict[str, str] = {}
     for name in names:
-        for word in re.split(r"[^A-Za-z0-9]+", name):
-            if word and not _keep_word(word) and word.lower() not in mapping:
-                mapping[word.lower()] = f"w{len(mapping) + 1}"
+        for token in _TOKEN.findall(name):
+            for word, own in _own_words(token):
+                if own and word.lower() not in mapping:
+                    mapping[word.lower()] = f"w{len(mapping) + 1}"
 
     def sub(text: str) -> str:
         def one(m: re.Match) -> str:
-            word = m.group(0)
-            new = mapping.get(word.lower())
-            if new is None:
-                return word
-            return new.upper() if word.isupper() else new
+            out = []
+            for word, own in _own_words(m.group(0)):
+                new = mapping.get(word.lower()) if own else None
+                if new is None:
+                    out.append(word)
+                else:
+                    out.append(new.upper() if word.isupper() else new)
+            return "".join(out)
         return _TOKEN.sub(one, text)
 
     def sub_map_line(line: str) -> str:

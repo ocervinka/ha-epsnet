@@ -122,11 +122,13 @@ def test_build_catalog_snapshot_includes_pub_role_counts_and_ranges() -> None:
         "map_path": "/tmp/test.pub",
         "pub_enrichment_active": True,
         "pub_entry_count": len(entries),
+        "channels_named_by_map": 0,
     }
     assert snapshot["unmatched_runtime_devices"] == []
     assert snapshot["unmatched_pub_devices"] == []
 
     assert room_snapshot["device_key"] == "sw_room_b_panel"
+    assert room_snapshot["paired_by"] == "order"  # no program layout in this inventory
     assert room_snapshot["registry_keys"] == ["sw_room_b_panel"]
     assert room_snapshot["role_entry_counts"] == {
         "r_bool": 4,
@@ -223,6 +225,7 @@ def test_build_catalog_snapshot_marks_runtime_only_mode_without_pub() -> None:
         "map_path": None,
         "pub_enrichment_active": False,
         "pub_entry_count": 0,
+        "channels_named_by_map": 0,
     }
     assert snapshot["groups"][0]["devices"][0]["pub_match"] is None
     assert snapshot["unmatched_pub_devices"] == []
@@ -271,3 +274,22 @@ def test_anonymize_replaces_own_words_consistently_and_keeps_structure() -> None
     # fields that carry no variable names are left alone
     assert out["catalog"]["groups"][0]["label"] == "CIB study"
     assert match["raw_hex"] == "hall"
+
+
+def test_anonymize_hides_names_that_do_not_separate_their_words() -> None:
+    """Names in one piece (KitchenDoorButton) or with a kept word inside a longer
+    one must not pass through whole."""
+    from custom_components.epsnet.diagnostics import anonymize_names
+
+    names = ["MagnetDoorPantry", "KitchenLight2", "pantrylight", "HallTemperature", "PIRWorkshop"]
+    data = {"map": {"entries": [f"{n} X B 4 .0 BOOL PUB_OUT" for n in names]},
+            "catalog": {"entity_keys": ["io_0_2_3126_1a2b_button_up1"],
+                        "device_name": "WSB2-40 1A2B"}}
+    out = anonymize_names(data, names)
+    hidden = [line.split(" ")[0] for line in out["map"]["entries"]]
+    assert hidden == ["Magnetw1w2", "w3Light2", "w2light", "w4w5", "PIRw6"]
+    text = " ".join(hidden).lower()
+    assert not any(word in text for word in ("door", "pantry", "kitchen", "hall", "workshop"))
+    assert len(set(hidden)) == len(names)  # still one name each
+    # what the rules look for stays readable, hardware names are untouched
+    assert out["catalog"] == data["catalog"]

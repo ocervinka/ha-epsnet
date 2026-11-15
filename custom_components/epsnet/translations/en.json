@@ -72,13 +72,13 @@
       },
       "file_no_match": {
         "title": "The file matches none of the modules",
-        "description": "{modules} modules were found, but no variable in the file belongs to any of them. It is most likely the `.pub` of another project.",
+        "description": "{modules} modules were found, but no variable in the file belongs to any of them: none is an input or an output of a module. It is most likely the `.pub` of another project, or of a program that publishes only its internal variables.",
         "menu_options": {
           "upload": "Upload another file",
           "use_file": "Use this file anyway"
         },
         "menu_option_descriptions": {
-          "use_file": "Home Assistant will only show states, under generic names, and cannot switch anything. The file's variables are kept and included in diagnostics, which helps add support for programs with their own naming."
+          "use_file": "Home Assistant will only show states, under generic names, and cannot switch anything. The file's variables are kept and included in diagnostics."
         }
       },
       "reconfigure": {
@@ -110,8 +110,10 @@
     },
     "create_entry": {
       "with_names": "{modules} modules and {variables} variables are set up.",
+      "names_only": "{modules} modules are set up. {named} of their inputs and outputs are named after the program's variables ({variables} in total).\n\nHome Assistant shows their states but cannot switch anything: the program publishes no command variables (`NAME_ON`, `NAME_OFF`). The integration's README describes the variables a program needs for switching.",
       "read_only": "{modules} modules are set up. Home Assistant shows their states but cannot switch anything yet, and names them by module type and bus address.\n\nTo control them and get your own names, add the program's `.pub` file: Configure → Load variable names from a .pub file. Entities keep their history.",
       "with_names_unsupported": "{modules} modules and {variables} variables are set up.\n\n{unsupported_count} of the modules are not supported yet ({unsupported_codes}) and have no entities. Settings → Repairs explains how to help add them.",
+      "names_only_unsupported": "{modules} modules are set up. {named} of their inputs and outputs are named after the program's variables ({variables} in total).\n\nHome Assistant shows their states but cannot switch anything: the program publishes no command variables (`NAME_ON`, `NAME_OFF`). The integration's README describes the variables a program needs for switching.\n\n{unsupported_count} of the modules are not supported yet ({unsupported_codes}) and have no entities. Settings → Repairs explains how to help add them.",
       "read_only_unsupported": "{modules} modules are set up. Home Assistant shows their states but cannot switch anything yet, and names them by module type and bus address.\n\nTo control them and get your own names, add the program's `.pub` file: Configure → Load variable names from a .pub file. Entities keep their history.\n\n{unsupported_count} of the modules are not supported yet ({unsupported_codes}) and have no entities. Settings → Repairs explains how to help add them."
     }
   },

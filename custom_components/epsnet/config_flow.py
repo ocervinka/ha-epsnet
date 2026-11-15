@@ -122,13 +122,26 @@ async def _pump_progress(flow, manager, task: asyncio.Task, snapshot) -> None:
             LOGGER.debug("progress refresh skipped: %r", err)
 
 
-def _file_names_a_module(result: SetupResult) -> bool:
-    """True when the map itself gave at least one entity.
-
-    Entities placed from the PLC program exist with any file, so they do not
-    show that a file belongs to this PLC.
-    """
+def _map_gives_entities(result: SetupResult) -> bool:
+    """True when the map itself gave at least one entity (not only a name)."""
     return any(not entity.from_program for entity in result.catalog.entities)
+
+
+def _file_names_a_module(result: SetupResult) -> bool:
+    """True when at least one variable of the map belongs to a module.
+
+    It gave an entity, or its name to an input or output placed from the PLC
+    program. Those entities themselves exist with any file, so they do not show
+    that a file belongs to this PLC.
+    """
+    return _map_gives_entities(result) or result.catalog.channels_named_by_map > 0
+
+
+def _map_can_switch(result: SetupResult) -> bool:
+    """True when the map has command variables: something can be switched."""
+    return any(
+        entity.platform in ("light", "switch") for entity in result.catalog.entities
+    )
 
 
 def _round_ms(milliseconds: float) -> str:
@@ -592,14 +605,30 @@ class EpsnetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_FAST_SCAN_INTERVAL: NEW_ENTRY_FAST_SCAN_INTERVAL,
             CONF_MAP: freeze_setup(result),
         }
-        if not result.entries:
+        if not _map_gives_entities(result):
+            # All entities are the program's (keyed by hardware): no map, or one
+            # that only names them. They stay when a later map says more.
             data[CONF_PROGRAM_FIRST] = True
 
         placeholders = {
             "modules": str(_module_count(result)),
             "variables": str(result.address_count),
+            # inputs and outputs called by a map variable's name
+            "named": str(
+                sum(
+                    entity.platform in ("binary_sensor", "sensor")
+                    for entity in result.catalog.entities
+                    if not entity.from_program
+                )
+                + result.catalog.channels_named_by_map
+            ),
         }
-        description = "with_names" if _file_names_a_module(result) else "read_only"
+        if not _file_names_a_module(result):
+            description = "read_only"
+        elif _map_can_switch(result):
+            description = "with_names"
+        else:
+            description = "names_only"
         unsupported_count, unsupported_codes = unsupported_module_summary(
             result.catalog
         )

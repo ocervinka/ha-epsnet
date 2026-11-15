@@ -72,13 +72,13 @@
       },
       "file_no_match": {
         "title": "Súbor nezodpovedá žiadnemu z modulov",
-        "description": "Nájdené moduly: {modules}. Žiadna premenná zo súboru však k žiadnemu z nich nepatrí. Najskôr ide o súbor `.pub` z iného projektu.",
+        "description": "Nájdené moduly: {modules}. Žiadna premenná zo súboru však k žiadnemu z nich nepatrí: žiadna nie je vstupom ani výstupom modulu. Najskôr ide o súbor `.pub` z iného projektu, alebo program zverejňuje len svoje vnútorné premenné.",
         "menu_options": {
           "upload": "Nahrať iný súbor",
           "use_file": "Použiť tento súbor aj tak"
         },
         "menu_option_descriptions": {
-          "use_file": "Home Assistant bude len zobrazovať stavy pod všeobecnými názvami a nič sa nebude dať ovládať. Premenné zo súboru sa uložia a budú súčasťou diagnostiky. Vďaka tomu možno doplniť podporu programov s vlastným pomenovaním."
+          "use_file": "Home Assistant bude len zobrazovať stavy pod všeobecnými názvami a nič sa nebude dať ovládať. Premenné zo súboru sa uložia a budú súčasťou diagnostiky."
         }
       },
       "reconfigure": {
@@ -110,8 +110,10 @@
     },
     "create_entry": {
       "with_names": "Načítané moduly: {modules}, premenné: {variables}.",
+      "names_only": "Načítané moduly: {modules}. Podľa premenných programu je pomenovaných vstupov a výstupov: {named} (premenných celkom: {variables}).\n\nHome Assistant zobrazuje ich stavy, ale nemôže nič ovládať: program nezverejňuje povelové premenné (`NAZOV_ON`, `NAZOV_OFF`). Ktoré premenné program na ovládanie potrebuje, popisuje README integrácie.",
       "read_only": "Načítané moduly: {modules}. Home Assistant zatiaľ len zobrazuje ich stavy a nemôže nič ovládať. Pomenoval ich podľa typu modulu a adresy na zbernici.\n\nOvládanie a vlastné názvy získate, keď doplníte súbor `.pub` k programu: Konfigurovať → Načítať názvy premenných zo súboru .pub. História entít zostane.",
       "with_names_unsupported": "Načítané moduly: {modules}, premenné: {variables}.\n\nZatiaľ nepodporované moduly: {unsupported_count} ({unsupported_codes}). Nemajú žiadne entity. Ako pomôcť s ich doplnením, nájdete v Nastavenia → Opravy.",
+      "names_only_unsupported": "Načítané moduly: {modules}. Podľa premenných programu je pomenovaných vstupov a výstupov: {named} (premenných celkom: {variables}).\n\nHome Assistant zobrazuje ich stavy, ale nemôže nič ovládať: program nezverejňuje povelové premenné (`NAZOV_ON`, `NAZOV_OFF`). Ktoré premenné program na ovládanie potrebuje, popisuje README integrácie.\n\nZatiaľ nepodporované moduly: {unsupported_count} ({unsupported_codes}). Nemajú žiadne entity. Ako pomôcť s ich doplnením, nájdete v Nastavenia → Opravy.",
       "read_only_unsupported": "Načítané moduly: {modules}. Home Assistant zatiaľ len zobrazuje ich stavy a nemôže nič ovládať. Pomenoval ich podľa typu modulu a adresy na zbernici.\n\nOvládanie a vlastné názvy získate, keď doplníte súbor `.pub` k programu: Konfigurovať → Načítať názvy premenných zo súboru .pub. História entít zostane.\n\nZatiaľ nepodporované moduly: {unsupported_count} ({unsupported_codes}). Nemajú žiadne entity. Ako pomôcť s ich doplnením, nájdete v Nastavenia → Opravy."
     }
   },

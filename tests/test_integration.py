@@ -609,6 +609,34 @@ async def test_reimport_from_a_file_of_another_project_keeps_the_map(
     assert entry.data["map"] == old_map
 
 
+async def test_only_devices_the_catalog_no_longer_has_can_be_deleted(
+    hass: HomeAssistant,
+) -> None:
+    """A module can become another device (found by address, renamed in the
+    program); what it was before must not stay undeletable."""
+    from homeassistant.helpers import device_registry as dr
+
+    from custom_components.epsnet import async_remove_config_entry_device
+
+    with _patch_client(AsyncMock()):
+        await _run_discover_flow(hass)
+        await hass.async_block_till_done()
+        entry = hass.config_entries.async_entries(DOMAIN)[0]
+        registry = dr.async_get(hass)
+        current = dr.async_entries_for_config_entry(registry, entry.entry_id)
+        assert current
+        for device in current:
+            assert not await async_remove_config_entry_device(hass, entry, device)
+
+        left_over = registry.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            identifiers={(DOMAIN, f"{entry.entry_id}_a_name_from_an_older_map")},
+            name="Old name",
+        )
+        assert await async_remove_config_entry_device(hass, entry, left_over)
+        await hass.config_entries.async_unload(entry.entry_id)
+
+
 async def test_removing_the_entry_removes_its_repairs(hass: HomeAssistant) -> None:
     from homeassistant.helpers import issue_registry as ir
     from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -676,6 +704,127 @@ async def test_setup_file_naming_no_module_is_questioned_but_can_be_used(
 
     entry = result["result"]
     assert [e["name"] for e in entry.data["map"]["entries"]] == ["unrelated_counter"]
+
+
+FREE_NAMES = """
+KitchenDoorButton X B 4 .0 BOOL PUB_OUT
+HallTemperature X F 5 REAL PUB_OUT
+BalconyLamp Y B 1 .0 BOOL PUB_OUT
+HeatingSetpoint R F 200 REAL PUB_INOUT
+"""
+
+
+def _patch_plc_with_a_program_layout():
+    """A PLC whose program places a wall switch, a relay module and a dimmer,
+    and that stores no variable names."""
+    from tests.test_program_entities import DIMMER, HOUSE, RELAY, WSB, _inventory, _layout
+
+    inventory = _inventory(_layout(HOUSE), [WSB, RELAY, DIMMER])
+
+    async def _scan(*_a, **_k):
+        await asyncio.sleep(0)
+        return inventory
+
+    async def _no_map(*_a, **_k):
+        await asyncio.sleep(0)
+        return ("SIM PLC", ())
+
+    async def _get_values(entries, *_a, **_k):
+        return {e.name: 0 for e in entries}
+
+    return patch.multiple(
+        _CLIENT,
+        discover_runtime_inventory=AsyncMock(side_effect=_scan),
+        async_fetch_pub_from_plc=AsyncMock(side_effect=_no_map),
+        get_values=AsyncMock(side_effect=_get_values),
+        get_point_values=AsyncMock(return_value={}),
+        async_close=AsyncMock(),
+    )
+
+
+async def test_setup_with_a_file_of_free_names_names_the_inputs_and_outputs(
+    hass: HomeAssistant, tmp_path
+) -> None:
+    """Names with no structure belong to the modules by address: the file is
+    accepted without a question, and the summary says nothing can be switched."""
+    from homeassistant.helpers import entity_registry as er
+
+    with _patch_plc_with_a_program_layout():
+        result = await _finish_progress(hass, await _pick_found_plc(hass))
+        assert result["step_id"] == "no_map"
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"next_step_id": "upload"}
+        )
+        with _patch_upload(FREE_NAMES, tmp_path):
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"], {"map_file": "0123456789abcdef0123456789abcdef"}
+            )
+            result = await _finish_progress(hass, result)
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert result["description"] == "names_only"
+        assert result["description_placeholders"] == {
+            "modules": "3", "variables": "4", "named": "3"
+        }
+        await hass.async_block_till_done()
+
+        entry = result["result"]
+        # every entity is the program's, so they keep their identity later on
+        assert entry.data["program_entities_first"] is True
+        registry = er.async_get(hass)
+        names = {
+            item.unique_id.removeprefix(f"{entry.entry_id}_"): item.original_name
+            for item in er.async_entries_for_config_entry(registry, entry.entry_id)
+        }
+        assert names["io_0_2_3126_1a2b_button_up1"] == "KitchenDoorButton"
+        assert names["io_0_2_3126_1a2b_temperature"] == "HallTemperature"
+        assert names["io_0_2_3151_2b3c_relay_re1"] == "BalconyLamp"
+        assert names["io_0_2_3151_2b3c_relay_re2"] == "RE2"
+        assert not hass.states.async_entity_ids("light")
+        assert not hass.states.async_entity_ids("switch")
+        await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_a_file_of_free_names_can_be_loaded_later(hass: HomeAssistant, tmp_path) -> None:
+    """Set up without names, then the file: same entities, now named."""
+    from homeassistant.helpers import entity_registry as er
+
+    with _patch_plc_with_a_program_layout():
+        result = await _finish_progress(hass, await _pick_found_plc(hass))
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"next_step_id": "inventory_only"}
+        )
+        assert result["description"] == "read_only"
+        await hass.async_block_till_done()
+        entry = result["result"]
+        registry = er.async_get(hass)
+
+        def _registered() -> dict[str, tuple[str, str | None]]:
+            return {
+                item.unique_id: (item.entity_id, item.original_name)
+                for item in er.async_entries_for_config_entry(registry, entry.entry_id)
+            }
+
+        before = _registered()
+        up1 = f"{entry.entry_id}_io_0_2_3126_1a2b_button_up1"
+        assert before[up1][1] == "UP1"
+
+        result = await _open_reimport_file_form(hass)
+        with _patch_upload(FREE_NAMES, tmp_path):
+            result = await hass.config_entries.options.async_configure(
+                result["flow_id"], {"map_file": "0123456789abcdef0123456789abcdef"}
+            )
+        await hass.async_block_till_done()
+        result = await hass.config_entries.options.async_configure(result["flow_id"])
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+
+        after = _registered()
+        assert after.keys() == before.keys()
+        assert {uid: ids[0] for uid, ids in after.items()} == {
+            uid: ids[0] for uid, ids in before.items()
+        }
+        assert after[up1][1] == "KitchenDoorButton"
+        await hass.config_entries.async_unload(entry.entry_id)
 
 
 async def test_update_speed_shows_measurements_and_checks_the_range(

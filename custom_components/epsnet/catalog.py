@@ -1,4 +1,11 @@
-"""Entity classification and model-first device recognition derived from .pub entries."""
+"""The entity and device catalog: the scanned modules joined with the variable map.
+
+A map variable belongs to the module whose inputs or outputs its address lies
+in (the PLC program's I/O layout gives every module's place). Names only decide
+what the address cannot: how a module is called, which variables in the
+program's memory go with an output (its state and commands), and, where the
+layout is not available, which module a group of variables is.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +14,7 @@ from dataclasses import dataclass, replace
 from functools import cmp_to_key, lru_cache
 import re
 
-from .program_entities import build_program_entities
+from .program_entities import ModulePlace, build_program_entities, module_places
 from .runtime_registry import RUNTIME_MODEL_INFOS_BY_CODE
 from .models import (
     AddressRange,
@@ -338,45 +345,29 @@ def _select_candidates(
             return zero_score, ()
         return best_score, best_indexes
 
-    _, selected_indexes = _solve(tuple(sorted(raw_roles_by_stem)))
+    # Only the variables some group can hold: one that fits none would end the
+    # search at its place in the order and lose every variable after it.
+    _, selected_indexes = _solve(tuple(sorted(candidate_indexes_by_stem)))
     return tuple(candidates[index] for index in selected_indexes)
 
 
-def _build_devices_from_raw_roles(
-    *,
-    family_key: str,
+def _attribute_stems(
     raw_roles_by_stem: dict[str, dict[str, list[PubEntry]]],
-    evaluator,
-) -> tuple[dict[str, DetectedDevice], dict[str, str], dict[str, str]]:
-    devices: dict[str, DetectedDevice] = {}
-    entry_to_device_key: dict[str, str] = {}
-    entry_to_channel_name: dict[str, str] = {}
-
-    for candidate in _select_candidates(raw_roles_by_stem, evaluator):
-        resolved_prefix = (
-            _longest_common_underscore_prefix(candidate.raw_stems) or candidate.prefix
-        )
-        device_alias = resolved_prefix[:-1]
-        device_name = f"{family_key}_{device_alias}" if family_key else device_alias
-        role_entries = _aggregate_roles(raw_roles_by_stem, candidate.raw_stems)
-        device_key = _slugify(device_name)
-        detected = _build_detected_device(
-            key=device_key,
-            name=device_name,
-            type_key=candidate.type_key,
-            model=candidate.model,
-            role_entries=role_entries,
-        )
-        devices[device_key] = detected
-
-        for raw_stem in candidate.raw_stems:
-            channel_name = raw_stem[len(resolved_prefix) :] or raw_stem
-            for role_entries_for_stem in raw_roles_by_stem[raw_stem].values():
-                for entry in role_entries_for_stem:
-                    entry_to_device_key[entry.name] = device_key
-                    entry_to_channel_name[entry.name] = channel_name
-
-    return devices, entry_to_device_key, entry_to_channel_name
+    stems: tuple[str, ...],
+    prefix: str,
+    device_key: str,
+    entry_to_device_key: dict[str, str],
+    entry_to_channel_name: dict[str, str],
+) -> None:
+    """Give the stems' variables to a device; a channel is its stem without the device's prefix."""
+    for raw_stem in stems:
+        channel_name = (
+            raw_stem[len(prefix) :] if prefix and raw_stem.startswith(prefix) else ""
+        ) or raw_stem
+        for role_entries_for_stem in raw_roles_by_stem[raw_stem].values():
+            for entry in role_entries_for_stem:
+                entry_to_device_key[entry.name] = device_key
+                entry_to_channel_name[entry.name] = channel_name
 
 
 def _role_entry_count(
@@ -545,16 +536,6 @@ def _evaluate_generic_candidate(
     return None
 
 
-def _detect_devices(
-    entries_by_name: dict[str, PubEntry],
-) -> tuple[dict[str, DetectedDevice], dict[str, str], dict[str, str]]:
-    return _build_devices_from_raw_roles(
-        family_key="",
-        raw_roles_by_stem=_collect_generic_raw_roles(entries_by_name),
-        evaluator=_evaluate_generic_candidate,
-    )
-
-
 _GENERIC_CROSS_TYPE_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
     {
         ("generic_analog_sensor_module", "generic_room_controller"),
@@ -646,14 +627,15 @@ def _match_runtime_inventory(
     tuple[RuntimeDiscoveredDevice, ...],
     tuple[DetectedDevice, ...],
 ]:
-    """Pair map devices with the physical modules found on the bus.
+    """Pair name-grouped map devices with modules, by type and order.
 
+    Used where the program's layout does not say whose a variable's address is.
     The PLC lays its modules' data out in the X/Y images in the order of the
     program's hardware list, and discovery reports each module's position in
     that list. So walking the modules in program order and giving each one the
     earliest (by image address) still-unpaired compatible map device pairs
-    same-model modules exactly, without knowing where the CIB data starts or
-    how large each module is.
+    same-model modules, without knowing where the CIB data starts or how large
+    each module is.
     """
     matched: dict[str, DetectedDevice] = {}
     available = dict(sorted(devices_by_key.items()))
@@ -678,6 +660,259 @@ def _match_runtime_inventory(
     return matched, tuple(unmatched_runtime), unmatched_pub
 
 
+
+
+# Roles of variables that sit in the X/Y images (a module's inputs and outputs).
+_IMAGE_ROLES = ("x_bool", "x_real", "y_bool_state", "y_real_state")
+
+
+def _shared_prefix_length(stem: str, other: str) -> int:
+    for prefix in reversed(_underscore_prefixes(stem)):
+        if other.startswith(prefix):
+            return len(prefix)
+    return 0
+
+
+def _place_stems(
+    raw_roles_by_stem: dict[str, dict[str, list[PubEntry]]],
+    candidates: tuple[_DeviceCandidate, ...],
+    owner: dict[tuple[str, int], int],
+) -> dict[str, int]:
+    """Stem -> index of the module its variables belong to.
+
+    ``owner`` says whose each byte of the X/Y images is. A variable lying in a
+    module's inputs or outputs belongs to that module, whatever it is called.
+    Variables in the program's own memory (an output's state and its commands)
+    have no such address; they go with the variables the name clustering
+    groups them with.
+    """
+    placed: dict[str, int] = {}
+    for stem, roles in raw_roles_by_stem.items():
+        hits = Counter(
+            owner[(entry.register, entry.address)]
+            for role in _IMAGE_ROLES
+            for entry in roles.get(role, ())
+            if (entry.register, entry.address) in owner
+        )
+        if hits:
+            placed[stem] = min(hits, key=lambda index: (-hits[index], index))
+    for candidate in candidates:
+        anchors = sorted(stem for stem in candidate.raw_stems if stem in placed)
+        if not anchors:
+            continue
+        for stem in candidate.raw_stems:
+            if stem in anchors:
+                continue
+            nearest = min(
+                anchors,
+                key=lambda anchor: (-_shared_prefix_length(stem, anchor), placed[anchor], anchor),
+            )
+            placed[stem] = placed[nearest]
+    return placed
+
+
+def _device_prefix(stems: tuple[str, ...]) -> str | None:
+    """The name prefix a module's variables share: its name in the program.
+
+    All of them, or most: one variable named differently does not unname the
+    module. ``None`` when they share none (names without a common structure);
+    the module is then known by its hardware only.
+    """
+    counts = Counter(
+        prefix for stem in stems for prefix in _underscore_prefixes(stem)
+    )
+    if not counts:
+        return None
+    prefix = max(counts, key=lambda candidate: (counts[candidate], len(candidate), candidate))
+    if counts[prefix] < len(stems) and counts[prefix] * 2 <= len(stems):
+        return None
+    return prefix if _slugify(prefix) else None
+
+
+def _free_key(key: str, taken: dict[str, DetectedDevice]) -> tuple[str, int]:
+    """(``key`` or the first free ``key_2``, ``key_3``…, its number)."""
+    number, free = 1, key
+    while free in taken:
+        number += 1
+        free = f"{key}_{number}"
+    return free, number
+
+
+def _resolve_devices(
+    entries_by_name: dict[str, PubEntry],
+    runtime_inventory: RuntimeInventory,
+) -> tuple[
+    dict[str, DetectedDevice],
+    dict[str, str],
+    dict[str, str],
+    tuple[RuntimeDiscoveredDevice, ...],
+    tuple[DetectedDevice, ...],
+]:
+    """Find the device of every map variable.
+
+    Returns the devices that have a module, the variables' device and channel
+    names, the modules the map says nothing about, and the name groups no
+    module was found for.
+
+    By address first: the PLC program's I/O layout says which bytes of the X/Y
+    images are whose, so a variable there has its module for certain. Such a
+    module is called by the prefix its variables share (``SW_hall`` for
+    ``SW_hall_UP1``, ``SW_hall_TERM``…); when they share none it stays known
+    by its hardware, and its variables keep their full names.
+
+    What the layout does not place (no layout read, a module it could not
+    decode, groups of variables in the program's memory only) is grouped by
+    name and paired with the remaining modules in order, as before the layout
+    was known.
+    """
+    raw_roles_by_stem = _collect_generic_raw_roles(entries_by_name)
+    candidates = _select_candidates(raw_roles_by_stem, _evaluate_generic_candidate)
+    places = module_places(runtime_inventory.program_layout, runtime_inventory.devices)
+    owner = {
+        image_byte: index
+        for index, place in enumerate(places)
+        for image_byte in place.image_bytes
+    }
+    placed = _place_stems(raw_roles_by_stem, candidates, owner)
+
+    devices: dict[str, DetectedDevice] = {}
+    entry_to_device_key: dict[str, str] = {}
+    entry_to_channel_name: dict[str, str] = {}
+
+    stems_by_place: dict[int, list[str]] = defaultdict(list)
+    for stem, index in placed.items():
+        stems_by_place[index].append(stem)
+    prefix_by_place = {
+        index: _device_prefix(tuple(stems)) for index, stems in stems_by_place.items()
+    }
+    # A variable in the program's memory that starts with a module's name is
+    # that module's too, also when the name clustering put it elsewhere.
+    for stem in sorted(set(raw_roles_by_stem) - set(placed)):
+        named_like = [
+            (-len(prefix), index)
+            for index, prefix in prefix_by_place.items()
+            if prefix and stem.startswith(prefix)
+        ]
+        if named_like:
+            index = min(named_like)[1]
+            placed[stem] = index
+            stems_by_place[index].append(stem)
+    for index in sorted(stems_by_place):
+        runtime_device = places[index].runtime
+        stems = tuple(sorted(stems_by_place[index]))
+        prefix = prefix_by_place[index]
+        if prefix is None:
+            prefix = ""
+            key = runtime_device.registry_key
+            name = f"{runtime_device.model} slot {runtime_device.runtime_index}"
+        else:
+            key, number = _free_key(_slugify(prefix[:-1]), devices)
+            name = prefix[:-1] if number == 1 else f"{prefix[:-1]} {number}"
+        detected = _merge_runtime_metadata(
+            _build_detected_device(
+                key=key,
+                name=name,
+                type_key=runtime_device.type_key,
+                model=runtime_device.model,
+                role_entries=_aggregate_roles(raw_roles_by_stem, stems),
+            ),
+            runtime_device,
+        )
+        devices[key] = replace(
+            detected,
+            paired_by="address",
+            # known by its hardware: not a device the map names
+            discovery_source=detected.discovery_source if prefix else "epsnet_runtime_only",
+        )
+        _attribute_stems(
+            raw_roles_by_stem, stems, prefix, key, entry_to_device_key, entry_to_channel_name
+        )
+
+    # The rest by name: groups none of whose variables the layout places, for
+    # the modules none of whose inputs or outputs the map names.
+    by_name: dict[str, DetectedDevice] = {}
+    stems_by_name_key: dict[str, list[tuple[tuple[str, ...], str]]] = defaultdict(list)
+    for candidate in candidates:
+        if any(stem in placed for stem in candidate.raw_stems):
+            continue
+        prefix = _longest_common_underscore_prefix(candidate.raw_stems) or candidate.prefix
+        key = _slugify(prefix[:-1])
+        if key in devices:
+            key, _ = _free_key(key, {**devices, **by_name})
+        by_name[key] = _build_detected_device(
+            key=key,
+            name=prefix[:-1],
+            type_key=candidate.type_key,
+            model=candidate.model,
+            role_entries=_aggregate_roles(raw_roles_by_stem, candidate.raw_stems),
+        )
+        stems_by_name_key[key].append((candidate.raw_stems, prefix))
+    named_modules = {places[index].runtime.registry_key for index in stems_by_place} | {
+        # also by a variable that only gives its name to an input or output
+        places[owner[(entry.register, entry.address)]].runtime.registry_key
+        for entry in entries_by_name.values()
+        if (entry.register, entry.address) in owner
+    }
+    matched, _, unmatched_pub_devices = _match_runtime_inventory(
+        by_name,
+        replace(
+            runtime_inventory,
+            devices=tuple(
+                device
+                for device in runtime_inventory.devices
+                if device.registry_key not in named_modules
+            ),
+        ),
+    )
+    for key, device in matched.items():
+        devices[key] = replace(device, paired_by="order")
+        for stems, prefix in stems_by_name_key[key]:
+            _attribute_stems(
+                raw_roles_by_stem, stems, prefix, key, entry_to_device_key, entry_to_channel_name
+            )
+
+    with_device = {
+        (device.runtime_group_token, device.runtime_slot_index) for device in devices.values()
+    }
+    unmatched_runtime_devices = tuple(
+        device
+        for device in sorted(runtime_inventory.devices, key=_program_order_key)
+        if (device.group_token, device.slot_index) not in with_device
+    )
+    return (
+        devices,
+        entry_to_device_key,
+        entry_to_channel_name,
+        unmatched_runtime_devices,
+        unmatched_pub_devices,
+    )
+
+
+def _map_names_by_address(
+    entries: tuple[PubEntry, ...],
+    specs: list[EntitySpec],
+    entry_to_channel_name: dict[str, str],
+) -> dict[tuple[str, int, int | None], tuple[str, str]]:
+    """What the map calls the inputs and outputs: (name, data type) by address.
+
+    An output a light or a switch already stands for is left out: its entity
+    carries the name, and the raw output keeps its hardware label.
+    """
+    switched = {spec.state_name for spec in specs if spec.platform in ("light", "switch")}
+    names: dict[tuple[str, int, int | None], tuple[str, str]] = {}
+    for entry in _sorted_entries_by_name(entries):
+        if entry.register not in ("X", "Y"):
+            continue
+        stem = entry.name
+        if entry.register == "Y" and stem.startswith(_STATE_PREFIX):
+            stem = stem[len(_STATE_PREFIX) :]
+        if stem in switched:
+            continue
+        names.setdefault(
+            (entry.register, entry.address, entry.bit),
+            (entry_to_channel_name.get(entry.name) or stem, entry.data_type),
+        )
+    return names
 
 
 def _binary_sensor_device_class(channel_name: str) -> str | None:
@@ -872,11 +1107,9 @@ def build_catalog(
     """Build the supported Home Assistant entity and device catalog.
 
     Runtime inventory is the identity source (what hardware exists); the `.pub`
-    export is the address source (where each channel sits in X/Y/R RAM). The
-    two are joined by name-stem clustering: entries that share a common
-    underscore prefix after stripping the generated `state_` prefix and
-    `_ON/_OFF/_TRIG` command suffixes are attributed to one logical device,
-    then paired with the modules in program order (`_match_runtime_inventory`).
+    export names it and adds what only the program knows (an output's state and
+    command variables in R). The two are joined by address: a variable in a
+    module's inputs or outputs is that module's (`_resolve_devices`).
     """
     entries_by_name = {entry.name: entry for entry in entries}
     # Modules with an unknown type code have no channel layout, so they can
@@ -897,35 +1130,24 @@ def build_catalog(
                 if device.runtime_type_code in RUNTIME_MODEL_INFOS_BY_CODE
             ),
         )
-    devices_by_key, entry_to_device_key, entry_to_channel_name = _detect_devices(
-        entries_by_name
-    )
-    devices_by_key, unmatched_runtime_devices, unmatched_pub_devices = (
-        _match_runtime_inventory(devices_by_key, runtime_inventory)
-    )
-    entry_to_device_key = {
-        entry_name: device_key
-        for entry_name, device_key in entry_to_device_key.items()
-        if device_key in devices_by_key
-    }
-    entry_to_channel_name = {
-        entry_name: channel_name
-        for entry_name, channel_name in entry_to_channel_name.items()
-        if entry_name in entry_to_device_key
-    }
+    (
+        devices_by_key,
+        entry_to_device_key,
+        entry_to_channel_name,
+        unmatched_runtime_devices,
+        unmatched_pub_devices,
+    ) = _resolve_devices(entries_by_name, runtime_inventory)
     pub_entities = _build_pub_entity_specs(
         entries_by_name,
         devices_by_key,
         entry_to_device_key,
         entry_to_channel_name,
     )
+    map_names = _map_names_by_address(entries, pub_entities, entry_to_channel_name)
 
-    # Modules the map does not cover are listed as devices but get no entities:
-    # without the map, where their data starts in the X/Y images is unknown
-    # (the order and sizes are known, the start is not), and guessed addresses
-    # would show plausible-looking wrong values.
+    # Modules the map says nothing about are listed as devices; their entities
+    # come from the program's I/O layout below (none when it was not read).
     entities = tuple(pub_entities)
-    state_names = tuple(dict.fromkeys(entity.state_name for entity in entities))
 
     for runtime_device in unmatched_runtime_devices:
         key = runtime_device.registry_key
@@ -947,50 +1169,69 @@ def build_catalog(
             discovery_source="epsnet_runtime_only",
         )
 
-    # Channels placed by the PLC program's own I/O layout that the map lacks
-    # (all of them when there is no map).
+    # Channels placed by the PLC program's own I/O layout.
     layout = runtime_inventory.program_layout
-    if program_first and entries and layout is not None and not layout.error:
+    keep_all = bool(program_first and entries and layout is not None and not layout.error)
+    if keep_all:
         # The entry was set up without a map, so its entities are the program's
         # (keyed by hardware). A map added later must not replace them: it names
         # them, and adds what the program alone cannot do (lights / switches).
         devices_by_key, entities = _keep_runtime_device_keys(devices_by_key, entities)
-        by_address = {
-            _state_address(entries_by_name, spec): spec
-            for spec in reversed(entities)
-            if spec.platform in ("binary_sensor", "sensor")
-        }
-        program = build_program_entities(
-            layout,
-            runtime_inventory.devices,
-            devices_by_key,
-            entries,
-            keep_named={address: spec.name for address, spec in by_address.items()},
+
+    def _known_by_hardware(device_key: str | None) -> bool:
+        # every module of an entry set up without a map, and any module the
+        # map gives no name of its own
+        device = devices_by_key.get(device_key) if device_key else None
+        return keep_all or (
+            device is not None and device.discovery_source == "epsnet_runtime_only"
         )
-        # A map entity reading a byte the program already places is replaced by
-        # the program's entity (also the map's whole-byte flags without a bit).
-        placed = {program.entries[spec.state_name] for spec in program.specs}
-        placed_bytes = {(e.register, e.address) for e in placed}
-        entities = tuple(
-            spec
-            for spec in entities
-            if not (
-                spec.platform in ("binary_sensor", "sensor")
-                and _state_address(entries_by_name, spec)[:2] in placed_bytes
-            )
+
+    def _is_the_programs(spec: EntitySpec) -> bool:
+        # An input or output of a module known by its hardware is shown by the
+        # program's entity (named by the map), not by one keyed by a variable
+        # name.
+        return spec.platform in ("binary_sensor", "sensor") and _known_by_hardware(
+            spec.device_key
         )
-    else:
-        program = build_program_entities(
-            layout,
-            runtime_inventory.devices,
-            devices_by_key,
-            entries,
-            shown=tuple(entries_by_name[spec.state_name] for spec in entities),
-            shown_devices={spec.device_key for spec in entities if spec.device_key},
+
+    shown_specs = tuple(spec for spec in entities if not _is_the_programs(spec))
+    program = build_program_entities(
+        layout,
+        runtime_inventory.devices,
+        devices_by_key,
+        entries,
+        keep_all=keep_all,
+        names=map_names,
+        shown=tuple(entries_by_name[spec.state_name] for spec in shown_specs),
+        # Only a module the map names as a device has its other channels start
+        # disabled; one known by its hardware keeps all of them enabled.
+        shown_devices={
+            spec.device_key
+            for spec in shown_specs
+            if spec.device_key and not _known_by_hardware(spec.device_key)
+        },
+    )
+    # A map entity reading a byte the program places for such a module gives
+    # way to the program's entity (also the map's whole-byte flags without a bit).
+    placed_bytes = {(entry.register, entry.address) for entry in program.entries.values()}
+    entities = tuple(
+        spec
+        for spec in entities
+        if not (
+            _is_the_programs(spec)
+            and _state_address(entries_by_name, spec)[:2] in placed_bytes
         )
+    )
     devices_by_key.update(program.devices)
     entries_by_name.update(program.entries)
-    entities = entities + tuple(program.specs)
+    # An input the map names like a motion sensor or a door contact is one,
+    # as for the map's own entities (hardware labels never read like that).
+    entities = entities + tuple(
+        replace(spec, device_class=_binary_sensor_device_class(spec.name))
+        if spec.platform == "binary_sensor" and spec.device_class is None
+        else spec
+        for spec in program.specs
+    )
     state_names = tuple(dict.fromkeys(entity.state_name for entity in entities))
 
     entity_keys_by_device: dict[str, list[str]] = defaultdict(list)
@@ -1017,6 +1258,7 @@ def build_catalog(
         unmatched_pub_devices=unmatched_pub_devices,
         unsupported_runtime_devices=unsupported_runtime_devices,
         program_report=tuple(program.report),
+        channels_named_by_map=program.named,
     )
 
 

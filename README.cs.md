@@ -19,8 +19,9 @@ v upozornění v **Opravách**, takže víte, co chybí.
 ## Co umí
 
 - komunikuje přímo protokolem EPSNET přes UDP, PLCComS není potřeba
-- při nastavení projde PLC a zjistí, které moduly CIB jsou skutečně připojené; každé zařízení z mapy
-  proměnných přiřadí ke správnému modulu podle jeho pořadí v programu PLC
+- při nastavení projde PLC a zjistí, které moduly CIB jsou skutečně připojené; proměnné z mapy
+  přiřadí k modulům podle adresy (proměnná patří modulu, jehož vstupem nebo výstupem je), takže
+  názvy nemusí mít žádný předepsaný tvar
 - mapu publikovaných proměnných (soubor `.pub` k programu) načte přímo z PLC, nebo z nahraného souboru
 - bez mapy zobrazí stavy všech vstupů a výstupů podporovaných modulů CIB podle konfigurace I/O
   uložené přímo v programu PLC (bez ovládání)
@@ -76,8 +77,8 @@ Na další věci se nastavení ptá jen tehdy, když je z PLC samo nezjistí:
   nedoplníte.
 - **PLC právě používá jiný program** (například programovací nástroj): zavřete ho a zkuste to
   znovu, nebo raději nahrajte soubor `.pub`.
-- **Nahraný soubor neodpovídá žádnému z modulů:** nejspíš je z jiného projektu. Nahrajte jiný, nebo
-  ho použijte i tak.
+- **Nahraný soubor neodpovídá žádnému z modulů** (žádná jeho proměnná není vstupem ani výstupem
+  modulu): nejspíš je z jiného projektu. Nahrajte jiný, nebo ho použijte i tak.
 
 Názvy proměnných se uloží do konfigurace integrace a samy se znovu nenačítají, protože jejich
 čtení obsadí servisní spojení s PLC. Když PLC dostane nový program, objeví se upozornění
@@ -101,19 +102,49 @@ Mapa je soubor `.pub` k programu: seznam publikovaných proměnných s jejich n�
 Entity podle ní dostanou vaše vlastní názvy a integrace přes její proměnné (`_ON` / `_OFF`
 v programu) ovládá výstupy.
 
+**Názvy se přiřazují podle adresy.** Z programu PLC je vidět, kde v paměti PLC leží vstupy
+a výstupy každého modulu. Proměnná z mapy, která tam leží, tedy patří tomuto modulu a pojmenuje
+jeho vstup nebo výstup, ať se jmenuje jakkoli. Mají-li proměnné jednoho modulu společný začátek
+názvu (`SW_hall_UP1`, `SW_hall_TERM`…), pojmenuje tento začátek modul (*SW_hall*) a zbytek kanál
+(*UP1*). Nemají-li žádný, modul se dál jmenuje podle typu a adresy na sběrnici (*WSB2-40 1A2B*)
+a jeho entity nesou celé názvy proměnných. Jen když se konfiguraci I/O z programu nepodaří
+přečíst, seskupí integrace proměnné podle názvů a skupiny přiřadí modulům podle pořadí; k tomu
+jsou potřeba názvy v podobě, jakou vytváří FoxTool.
+
+**K ovládání jsou potřeba povelové proměnné.** Program PLC výstupy v každém cyklu přepisuje,
+takže Home Assistant nemůže do výstupu zapsat přímo a o přepnutí žádá program. Výstup lze ovládat,
+když pro něj mapa obsahuje tyto proměnné (příklad pro název `Lamp`):
+
+| Proměnná | Kde | K čemu je |
+| --- | --- | --- |
+| `state_Lamp` | přímo výstup (`Y`) | říká, který výstup kterého modulu to je |
+| `Lamp` | paměť programu (`R`), `BOOL` | stav, který Home Assistant zobrazuje |
+| `Lamp_ON`, `Lamp_OFF` | paměť programu (`R`), `BOOL` | Home Assistant jednu z nich nastaví na 1; program výstup přepne a proměnnou vynuluje |
+
+Programy z FoxToolu je zveřejňují pro každý výstup. Do vlastního programu si je doplníte sami,
+spolu s několika řádky, které na ně reagují. Entita je světlo, pokud název obsahuje `light`, jinak
+spínač. U výstupu stmívače je `Lamp` typu `REAL` a obsahuje úroveň v procentech; tu Home Assistant
+zapisuje při nastavení jasu. Výstup bez těchto proměnných se jen zobrazuje a ovládat nejde. Pokud
+mapa neobsahuje žádné, napíše to nastavení ve svém závěrečném shrnutí.
+
+Ostatní proměnné v paměti programu (žádané hodnoty, režimy, příznaky) zatím entity nemají.
+
 Nastavení může pokračovat i bez mapy. Integrace pak přečte konfiguraci I/O, která je součástí
 programu PLC (který modul leží kde v paměti PLC), a vytvoří entitu pro každý vstup a výstup
 podporovaných modulů CIB: tlačítka, vstupy, teploty, stavy relé a LED, úrovně stmívačů. Tyto
 entity **jen zobrazují stav** a jmenují se podle typu modulu a adresy na sběrnici (např. *WSB2-40
 1A2B Temperature*). Program PLC totiž výstupy v každém cyklu přepisuje, takže je lze zobrazit, ale
-bez řídicích proměnných programu ne ovládat. Když soubor `.pub` doplníte později, tyto entity
+bez povelových proměnných programu ne ovládat. Když soubor `.pub` doplníte později, tyto entity
 zůstanou (stejná ID, historie i automatizace), dostanou názvy z vašeho programu a přibudou světla
-a spínače, které lze ovládat. Moduly na interní sběrnici CPU (ne CIB) zahrnuté nejsou.
+a spínače, pro které má program povelové proměnné. Moduly na interní sběrnici CPU (ne CIB) zahrnuté
+nejsou.
 
 S mapou integrace přidá i kanály, které žádná z entit mapy nezobrazuje (např. sabotážní kontakty,
-stavové příznaky, místní tlačítka reléových modulů, fyzické stavy výstupů). Jsou vypnuté; zapněte
-si ty, které chcete. Vypnuté entity se z PLC nečtou. Když takový kanál začne zobrazovat entita
-z nově načtené mapy, nebo ho program přestane používat, přidaná entita se odstraní.
+stavové příznaky, místní tlačítka reléových modulů, fyzické stavy výstupů). U modulu, který mapa
+pojmenovala, jsou vypnuté; zapněte si ty, které chcete. U modulu známého jen podle typu a adresy
+na sběrnici jsou zapnuté. Kanál, pro který má mapa proměnnou, nese její název. Vypnuté entity se
+z PLC nečtou. Když takový kanál začne zobrazovat entita z nově načtené mapy, nebo ho program
+přestane používat, přidaná entita se odstraní.
 
 Pokud dvě proměnné mapy ukazují na stejný vstupní nebo výstupní bit, integrace na to při startu
 upozorní v logu a diagnostika je vypíše. Obvykle jde o chybu exportu (např. relé 9–12 modulu

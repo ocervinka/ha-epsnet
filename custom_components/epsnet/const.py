@@ -33,6 +33,7 @@ MERGED_CATALOG_BASENAME = "merged_catalog"
 SUPPORTED_PLATFORMS = ("binary_sensor", "light", "sensor", "switch")
 
 ISSUE_TRACKER_URL = "https://github.com/ocervinka/ha-epsnet/issues"
-# Set when the entry was created without a map: its entities come from the PLC
-# program and keep their identity when a map is imported later.
+# Set when the entry was created without a map, or with one that only names the
+# program's entities: they come from the PLC program and keep their identity
+# when a map imported later says more.
 CONF_PROGRAM_FIRST = "program_entities_first"

@@ -434,6 +434,30 @@ async def async_remove_entry(hass, entry) -> None:
     clear_names_issues(hass, entry.entry_id)
 
 
+async def async_remove_config_entry_device(hass, config_entry, device_entry) -> bool:
+    """Let the user delete a device the PLC no longer gives a reason for.
+
+    A module can change the device it is shown as: when the variable map
+    starts or stops naming it, or when its variables turn out to belong to
+    another module. The device it was before stays in the registry, empty or
+    with entities that are no longer provided; it may be deleted. Devices of
+    the current catalog may not.
+    """
+    runtime = hass.data.get(DOMAIN, {}).get(config_entry.entry_id)
+    if runtime is None:
+        return False
+    current = _registry_identifiers(
+        config_entry.entry_id,
+        *(
+            key
+            for device in runtime.catalog.devices_by_key.values()
+            for key in device.registry_keys
+        ),
+        *(device.registry_key for device in runtime.catalog.runtime_inventory.devices),
+    )
+    return not (device_entry.identifiers & current)
+
+
 async def async_unload_entry(hass, entry) -> bool:
     """Unload an EPSNET config entry."""
     runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id)

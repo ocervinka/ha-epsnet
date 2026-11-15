@@ -19,8 +19,9 @@ Modules the integration doesn't know yet are not created as devices; they are li
 ## Current capabilities
 
 - direct EPSNET UDP transport; PLCComS is not required
-- live discovery of the installed CIB modules during setup; each device from the variable map is
-  paired with its physical module by the module's position in the PLC program
+- live discovery of the installed CIB modules during setup; the map's variables find their
+  module by address (a variable belongs to the module whose input or output it is), so names
+  need no particular form
 - the published-variable map (the program's `.pub`) read straight from the PLC, or uploaded
 - without a map: every input and output of the supported CIB modules, read from the PLC program's
   own I/O configuration and shown read-only
@@ -87,8 +88,8 @@ A question is asked only when the PLC cannot answer it:
   file.
 - **Another program is connected to the PLC** (for example the programming tool): close it and
   try again, or upload the `.pub` file instead.
-- **The uploaded file matches none of the modules:** it is probably from another project. Upload
-  another one, or use it anyway.
+- **The uploaded file matches none of the modules** (none of its variables is an input or an
+  output of a module): it is probably from another project. Upload another one, or use it anyway.
 
 The PLC's modules are always scanned live, so entities are created only for hardware that is
 actually there. The variable names are stored in the config entry and are not re-read on their
@@ -111,6 +112,33 @@ The map is the program's `.pub` file: the list of published variables with their
 addresses in the PLC. It gives entities your own names and is what the integration switches
 through (the program's `_ON` / `_OFF` command variables).
 
+**Names go by address.** The PLC program says where each module's inputs and outputs sit in the
+PLC's memory, so a map variable lying there is that module's and names that input or output,
+whatever it is called. When a module's variables share a prefix (`SW_hall_UP1`, `SW_hall_TERM`…),
+the prefix names the module (*SW_hall*) and the rest names the channel (*UP1*). When they share
+none, the module keeps its type and bus address as its name (*WSB2-40 1A2B*) and its entities
+carry the full variable names. Only if the program's I/O configuration cannot be read does the
+integration fall back to grouping the variables by name and pairing the groups with the modules
+in order, which needs names in the form FoxTool generates.
+
+**Switching needs command variables.** The PLC program rewrites its outputs every cycle, so Home
+Assistant cannot write to an output; it asks the program. An output can be switched when the map
+has these variables for it (shown for the name `Lamp`):
+
+| Variable | Where | What it is |
+| --- | --- | --- |
+| `state_Lamp` | the output itself (`Y`) | says which module's output this is |
+| `Lamp` | program memory (`R`), `BOOL` | the state Home Assistant shows |
+| `Lamp_ON`, `Lamp_OFF` | program memory (`R`), `BOOL` | Home Assistant sets one to 1; the program switches the output and clears it |
+
+Programs made in FoxTool publish these for every output. In a program you write yourself you add
+them, with the few lines that act on them. The entity is a light when the name contains `light`,
+otherwise a switch. For a dimmer output, `Lamp` is a `REAL` with the level in percent, which Home
+Assistant writes when you set the brightness. An output without these variables is shown but
+cannot be switched; when the map has none at all, the summary at the end of setup says so.
+
+Other variables in the program's memory (setpoints, modes, flags) get no entities yet.
+
 Without a map, setup can still continue: the integration reads the I/O configuration compiled into
 the PLC program (which module sits where in the PLC's memory) and creates an entity for every input
 and output of the supported CIB modules — buttons, inputs, temperatures, relay and LED states,
@@ -118,12 +146,15 @@ dimmer levels. They are **read-only** and named by module type and bus address (
 Temperature*): the PLC program rewrites the outputs every cycle, so they can be shown but not
 switched without the program's command variables. Adding the `.pub` later keeps those entities
 (same entity IDs, history and automations), gives them the names from your program and adds the
-lights and switches you can control. Modules on a CPU's internal bus (not CIB) are not covered.
+lights and switches the program has command variables for. Modules on a CPU's internal bus (not
+CIB) are not covered.
 
 With a map, the channels none of its entities shows (e.g. tamper contacts, status flags, the
-relay modules' local switches, the physical output states) are added as well, disabled — enable
-the ones you want. Disabled entities are not read from the PLC. When a re-imported map starts
-showing such a channel, or the program stops placing it, its extra entity is removed.
+relay modules' local switches, the physical output states) are added as well. On a module the
+map names they start disabled — enable the ones you want; on a module known only by its type and
+bus address they start enabled. A channel the map has a variable for carries that variable's
+name. Disabled entities are not read from the PLC. When a re-imported map starts showing such a
+channel, or the program stops placing it, its extra entity is removed.
 
 If two map variables point at the same input or output bit, the log warns at startup and the
 diagnostics list them: it is usually an export mistake (e.g. a 12-relay module's relays 9–12 given
@@ -193,6 +224,8 @@ Grouped/block polling is the default production read path.
 - The direct EPSNET backend is reverse-engineered and intentionally focused on the request/response
   patterns needed by the current entity set.
 - Without a variable map, inputs and outputs are read-only and CIB modules only (see above).
+- Variables that are neither a module's input or output nor an output's state and command
+  variables (setpoints, modes, flags in the program's memory) get no entities.
 - Advanced room-controller features such as richer HVAC/setpoint behavior are still out of scope for the
   current public release.
 
