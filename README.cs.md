@@ -26,6 +26,8 @@ v upozornění v **Opravách**, takže víte, co chybí.
 - bez mapy zobrazí stavy všech vstupů a výstupů podporovaných modulů CIB podle konfigurace I/O
   uložené přímo v programu PLC (bez ovládání)
 - entity pro světla, spínače, binární vstupy (tlačítka, PIR, magnetické kontakty) a teploty
+- ostatní zveřejněné proměnné programu (příznaky, žádané hodnoty, povely) jako entity, které si
+  povolíte podle potřeby
 - binární vstupy čte zvlášť a častěji (např. každých 100 ms), aby zachytila i krátký stisk tlačítka
 - diagnostika a senzory s dobou čtení
 
@@ -78,7 +80,8 @@ Na další věci se nastavení ptá jen tehdy, když je z PLC samo nezjistí:
 - **PLC právě používá jiný program** (například programovací nástroj): zavřete ho a zkuste to
   znovu, nebo raději nahrajte soubor `.pub`.
 - **Nahraný soubor neodpovídá žádnému z modulů** (žádná jeho proměnná není vstupem ani výstupem
-  modulu): nejspíš je z jiného projektu. Nahrajte jiný, nebo ho použijte i tak.
+  modulu): nejspíš je z jiného projektu. Nahrajte jiný, nebo ho použijte i tak, pokud program
+  opravdu zveřejňuje jen své vnitřní proměnné. Budou z nich zakázané entity popsané níže.
 
 Názvy proměnných se uloží do konfigurace integrace a samy se znovu nenačítají, protože jejich
 čtení obsadí servisní spojení s PLC. Když PLC dostane nový program, objeví se upozornění
@@ -127,7 +130,23 @@ spínač. U výstupu stmívače je `Lamp` typu `REAL` a obsahuje úroveň v proc
 zapisuje při nastavení jasu. Výstup bez těchto proměnných se jen zobrazuje a ovládat nejde. Pokud
 mapa neobsahuje žádné, napíše to nastavení ve svém závěrečném shrnutí.
 
-Ostatní proměnné v paměti programu (žádané hodnoty, režimy, příznaky) zatím entity nemají.
+**Ostatní proměnné programu.** Všechno ostatní, co program zveřejňuje (příznaky, režimy, žádané
+hodnoty, povely pod vlastními názvy), nabídne integrace jako entity, které přímo odpovídají hodnotě
+proměnné. Patří k zařízení, které představuje samotné PLC a jmenuje se podle jeho typu:
+
+| Proměnná | Entita |
+| --- | --- |
+| `BOOL` v paměti programu (`R`) | spínač: zapnutí zapíše 1, vypnutí 0 |
+| číslo v paměti programu (celočíselné typy, `REAL`, `LREAL`) | číslo: zobrazuje hodnotu a umožňuje ji nastavit |
+| zveřejněná jen pro čtení (`PUB_OUT`) nebo mimo paměť programu | binární senzor nebo senzor |
+
+Tyto entity vznikají **zakázané**: povel se od stavového příznaku rozeznat nedá a program může
+zveřejňovat stovky proměnných. Na stránce zařízení si povolte ty, které potřebujete; teprve pak je
+integrace začne číst. Stejně se ovládá i program, který nemá proměnné `_ON` / `_OFF`: povolíte
+proměnné, přes které přijímá povely. Home Assistant zapíše hodnotu tak, jak je, a co s ní program
+udělá, záleží na programu. Povel, který si program sám vynuluje, se za okamžik zase zobrazí jako
+vypnutý. Entita, kterou jste nikdy nepovolili, zmizí, jakmile program její proměnnou přestane
+zveřejňovat. Proměnné typu čas, datum a text entity nemají.
 
 Nastavení může pokračovat i bez mapy. Integrace pak přečte konfiguraci I/O, která je součástí
 programu PLC (který modul leží kde v paměti PLC), a vytvoří entitu pro každý vstup a výstup

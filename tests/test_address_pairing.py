@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from custom_components.epsnet.catalog import build_catalog
+from custom_components.epsnet.catalog import PROGRAM_VARIABLES_DEVICE_KEY, build_catalog
 from custom_components.epsnet.pubfile import parse_pub_text
 from tests.test_program_entities import DIMMER, HOUSE, RELAY, WSB, _inventory, _layout
 from tests.test_program_layout import DEVICE, MASTER, _master
@@ -36,7 +36,13 @@ def _catalog(pub: str, inventory=None, **kwargs):
 
 
 def _entities(catalog):
-    return {entity.key: entity for entity in catalog.entities}
+    """The modules' entities (the program's other variables are tested apart)."""
+    return {entity.key: entity for entity in catalog.entities if not entity.variable}
+
+
+def _module_devices(catalog):
+    return {key: device for key, device in catalog.devices_by_key.items()
+            if key != PROGRAM_VARIABLES_DEVICE_KEY}
 
 
 FREE_NAMES = """
@@ -64,9 +70,9 @@ def test_names_without_any_structure_name_the_inputs_and_outputs():
     assert all(e.enabled_by_default for e in entities.values() if not e.diagnostic)
     assert {e.platform for e in entities.values()} == {"binary_sensor", "sensor"}
     # the modules stay known by their hardware
-    assert {d.name for d in catalog.devices_by_key.values()} == {
+    assert {d.name for d in _module_devices(catalog).values()} == {
         "WSB2-40 1A2B", "SA2-012M 2B3C", "DA2-22M 3C4D"}
-    assert set(catalog.devices_by_key) == set(without_map.devices_by_key)
+    assert set(_module_devices(catalog)) == set(without_map.devices_by_key)
 
 
 def test_inputs_named_like_motion_or_door_sensors_are_shown_as_such():
@@ -86,7 +92,7 @@ Doorbell X B 4 .2 BOOL PUB_OUT
 def test_a_map_naming_nothing_on_any_module_names_nothing():
     catalog = _catalog("HeatingSetpoint R F 200 REAL PUB_INOUT\nSpare X B 900 .0 BOOL PUB_OUT\n")
     assert catalog.channels_named_by_map == 0
-    assert all(e.from_program for e in catalog.entities)
+    assert all(e.from_program for e in _entities(catalog).values())
 
 
 def test_a_module_is_found_by_its_address_not_by_its_place_in_the_order():

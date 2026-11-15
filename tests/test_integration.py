@@ -699,7 +699,9 @@ async def test_setup_file_naming_no_module_is_questioned_but_can_be_used(
             result["flow_id"], {"next_step_id": "use_file"}
         )
         assert result["type"] == FlowResultType.CREATE_ENTRY
-        assert result["description"] == "read_only"
+        # no module is named; the file's variable waits as a disabled entity
+        assert result["description"] == "read_only_spare"
+        assert result["description_placeholders"]["spare"] == "1"
         await hass.async_block_till_done()
 
     entry = result["result"]
@@ -761,9 +763,9 @@ async def test_setup_with_a_file_of_free_names_names_the_inputs_and_outputs(
             )
             result = await _finish_progress(hass, result)
         assert result["type"] == FlowResultType.CREATE_ENTRY
-        assert result["description"] == "names_only"
+        assert result["description"] == "names_only_spare"
         assert result["description_placeholders"] == {
-            "modules": "3", "variables": "4", "named": "3"
+            "modules": "3", "variables": "4", "named": "3", "spare": "1", "plc": "CPU",
         }
         await hass.async_block_till_done()
 
@@ -781,6 +783,11 @@ async def test_setup_with_a_file_of_free_names_names_the_inputs_and_outputs(
         assert names["io_0_2_3151_2b3c_relay_re2"] == "RE2"
         assert not hass.states.async_entity_ids("light")
         assert not hass.states.async_entity_ids("switch")
+        # the variable in the program's memory is offered, disabled, on the PLC's device
+        setpoint = registry.async_get("number.cpu_heatingsetpoint")
+        assert setpoint.unique_id == f"{entry.entry_id}_var:HeatingSetpoint"
+        assert setpoint.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+        assert hass.states.get("number.cpu_heatingsetpoint") is None
         await hass.config_entries.async_unload(entry.entry_id)
 
 
@@ -819,11 +826,114 @@ async def test_a_file_of_free_names_can_be_loaded_later(hass: HomeAssistant, tmp
         await hass.async_block_till_done()
 
         after = _registered()
-        assert after.keys() == before.keys()
-        assert {uid: ids[0] for uid, ids in after.items()} == {
+        # the file adds only the program's own variable, as an entity of its own
+        assert after.keys() - before.keys() == {f"{entry.entry_id}_var:HeatingSetpoint"}
+        assert {uid: after[uid][0] for uid in before} == {
             uid: ids[0] for uid, ids in before.items()
         }
         assert after[up1][1] == "KitchenDoorButton"
+        await hass.config_entries.async_unload(entry.entry_id)
+
+
+PROGRAM_VARIABLES = FREE_NAMES + """
+PartyMode R B 300 .2 BOOL PUB_INOUT
+PumpRunHours R W 310 UINT PUB_INOUT
+"""
+
+
+async def _set_up_with_file(hass: HomeAssistant, tmp_path, text: str):
+    result = await _finish_progress(hass, await _pick_found_plc(hass))
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"next_step_id": "upload"}
+    )
+    with _patch_upload(text, tmp_path):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"map_file": "0123456789abcdef0123456789abcdef"}
+        )
+        result = await _finish_progress(hass, result)
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    return result["result"]
+
+
+async def _enable(hass: HomeAssistant, entry, *entity_ids: str) -> None:
+    from homeassistant.helpers import entity_registry as er
+
+    registry = er.async_get(hass)
+    for entity_id in entity_ids:
+        registry.async_update_entity(entity_id, disabled_by=None)
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    await hass.data[DOMAIN][entry.entry_id].coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+
+async def test_an_enabled_program_variable_is_read_and_written(
+    hass: HomeAssistant, tmp_path
+) -> None:
+    """A switch is the variable's value: on writes 1, off writes 0. A number sets it."""
+    set_value = AsyncMock()
+    with _patch_plc_with_a_program_layout(), patch(f"{_CLIENT}.set_value", set_value):
+        entry = await _set_up_with_file(hass, tmp_path, PROGRAM_VARIABLES)
+        # nothing of it is read or shown until the user enables it
+        assert hass.states.get("switch.cpu_partymode") is None
+        coordinator = hass.data[DOMAIN][entry.entry_id].coordinator
+        assert "PartyMode" not in {e.name for e in coordinator.polled_state_entries()}
+
+        await _enable(hass, entry, "switch.cpu_partymode", "number.cpu_pumprunhours")
+        coordinator = hass.data[DOMAIN][entry.entry_id].coordinator
+        assert {"PartyMode", "PumpRunHours"} <= {
+            e.name for e in coordinator.polled_state_entries()
+        }
+        assert hass.states.get("switch.cpu_partymode").state == "off"
+        assert hass.states.get("number.cpu_heatingsetpoint") is None  # still disabled
+
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": "switch.cpu_partymode"}, blocking=True
+        )
+        await hass.services.async_call(
+            "switch", "turn_off", {"entity_id": "switch.cpu_partymode"}, blocking=True
+        )
+        await hass.services.async_call(
+            "number", "set_value",
+            {"entity_id": "number.cpu_pumprunhours", "value": 1200}, blocking=True,
+        )
+        written = [(call.args[0].name, call.args[1]) for call in set_value.await_args_list]
+        assert written == [
+            ("PartyMode", True), ("PartyMode", False), ("PumpRunHours", 1200)
+        ]
+        assert isinstance(written[2][1], int)
+        state = hass.states.get("number.cpu_pumprunhours")
+        assert (state.attributes["min"], state.attributes["max"], state.attributes["step"]) == (
+            0, 65535, 1)
+        await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_a_variable_the_program_drops_takes_its_unused_entity_along(
+    hass: HomeAssistant, tmp_path
+) -> None:
+    """A never-enabled entity has nothing to lose; one the user enabled stays."""
+    from homeassistant.helpers import entity_registry as er
+
+    with _patch_plc_with_a_program_layout(), patch(f"{_CLIENT}.set_value", AsyncMock()):
+        entry = await _set_up_with_file(hass, tmp_path, PROGRAM_VARIABLES)
+        await _enable(hass, entry, "switch.cpu_partymode")
+        registry = er.async_get(hass)
+        assert registry.async_get("number.cpu_pumprunhours") is not None
+
+        # the next program publishes neither of the two
+        result = await _open_reimport_file_form(hass)
+        with _patch_upload(FREE_NAMES, tmp_path):
+            result = await hass.config_entries.options.async_configure(
+                result["flow_id"], {"map_file": "0123456789abcdef0123456789abcdef"}
+            )
+        await hass.async_block_till_done()
+        result = await hass.config_entries.options.async_configure(result["flow_id"])
+        await hass.async_block_till_done()
+
+        assert registry.async_get("number.cpu_pumprunhours") is None
+        assert registry.async_get("switch.cpu_partymode") is not None
+        assert registry.async_get("number.cpu_heatingsetpoint") is not None  # still published
         await hass.config_entries.async_unload(entry.entry_id)
 
 

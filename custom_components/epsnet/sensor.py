@@ -9,6 +9,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .coordinator import EpsnetPollMetricsSnapshot
 from .const import DOMAIN
 from .entity import EpsnetEntity
+from .number import readable_real
 
 # (metric_key, unit, device_class). The metric key doubles as the translation
 # key (entity.sensor.<key>.name in translations/*.json). Duration metrics report
@@ -32,7 +33,9 @@ _POLL_METRIC_SENSORS = (
 async def async_setup_entry(hass, entry, async_add_entities) -> None:
     runtime = hass.data[DOMAIN][entry.entry_id]
     entities = list(
-        EpsnetTemperatureSensorEntity(runtime.coordinator, spec, entry_id=entry.entry_id)
+        (EpsnetVariableSensorEntity if spec.variable else EpsnetTemperatureSensorEntity)(
+            runtime.coordinator, spec, entry_id=entry.entry_id
+        )
         for spec in runtime.catalog.entities_for_platform("sensor")
     )
     entities.extend(
@@ -132,3 +135,17 @@ class EpsnetTemperatureSensorEntity(EpsnetEntity, SensorEntity):
         value = filter_ds18b20_glitch(self._state_value, self._last_good)
         self._last_good = value
         return value
+
+
+class EpsnetVariableSensorEntity(EpsnetEntity, SensorEntity):
+    """A numeric variable of the PLC program that is only shown."""
+
+    def __init__(self, coordinator, spec, *, entry_id: str) -> None:
+        super().__init__(coordinator, spec, entry_id=entry_id)
+        entry = coordinator.catalog.entries_by_name[spec.state_name]
+        self._is_real = entry.data_type.upper() == "REAL"
+
+    @property
+    def native_value(self) -> float | int | str | None:
+        value = self._state_value
+        return readable_real(value) if self._is_real else value

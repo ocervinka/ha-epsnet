@@ -36,6 +36,16 @@ _COMMAND_SUFFIXES: tuple[tuple[str, str], ...] = (
     ("_ON", "r_cmd_on"),
 )
 
+# The device of the program's variables that no module entity uses. Its key
+# cannot be a module's: those are made of letters, digits and underscores.
+PROGRAM_VARIABLES_DEVICE_KEY = "program-variables"
+PROGRAM_VARIABLE_KEY_PREFIX = "var:"
+_VARIABLE_NUMBER_TYPES = frozenset(
+    {"BYTE", "USINT", "SINT", "INT", "UINT", "WORD", "DINT", "UDINT", "DWORD", "REAL", "LREAL"}
+)
+# the client reads and writes with 16-bit addresses
+_LAST_ADDRESS = 0xFFFF
+
 GENERIC_MODEL_DEFINITIONS = (
     DeviceTypeDefinition(
         key="generic_relay_module",
@@ -1098,6 +1108,89 @@ def _build_pub_entity_specs(
     return specs
 
 
+def _build_variable_entity_specs(
+    entries: tuple[PubEntry, ...],
+    entities: tuple[EntitySpec, ...],
+    entry_to_device_key: dict[str, str],
+    module_bytes: set[tuple[str, int]],
+) -> list[EntitySpec]:
+    """The published variables no entity uses, each offered as it is.
+
+    A program may publish more than the modules' inputs and outputs and the
+    command variables of lights and switches: flags, setpoints, commands under
+    names of its own. Each becomes an entity of the variable's value, created
+    disabled: nothing tells a command from a status flag, so the user picks.
+    A variable in the program's memory can be written (a switch, a number);
+    one elsewhere is only shown.
+
+    Left out: what an entity already stands for (its state and commands, an
+    input or output of a module) and types that are not one plain value.
+    """
+    used: set[str] = set()
+    for spec in entities:
+        used.update(
+            name
+            for name in (
+                spec.state_name,
+                spec.on_command_name,
+                spec.off_command_name,
+                spec.set_value_name,
+            )
+            if name
+        )
+        if spec.platform in ("light", "switch"):
+            # the whole family of the output, also the commands it does not use
+            used.add(_STATE_PREFIX + spec.state_name)
+            used.update(spec.state_name + suffix for suffix, _ in _COMMAND_SUFFIXES)
+
+    specs: list[EntitySpec] = []
+    for entry in _sorted_entries_by_name(list(entries)):
+        if entry.is_virtual or entry.name in used:
+            continue
+        if entry.register in ("X", "Y") and (
+            entry.name in entry_to_device_key
+            or (entry.register, entry.address) in module_bytes
+        ):
+            continue  # a module's input or output: the module's entities show it
+        data_type = entry.data_type.upper()
+        is_bool = data_type == "BOOL"
+        if not is_bool and data_type not in _VARIABLE_NUMBER_TYPES:
+            continue
+        if entry.address < 0 or entry.address + entry.byte_size - 1 > _LAST_ADDRESS:
+            continue
+        writable = entry.writable and entry.register == "R"
+        if is_bool:
+            platform = "switch" if writable else "binary_sensor"
+        else:
+            platform = "number" if writable else "sensor"
+        specs.append(
+            EntitySpec(
+                key=PROGRAM_VARIABLE_KEY_PREFIX + entry.name,
+                platform=platform,
+                name=entry.name,
+                state_name=entry.name,
+                value_kind=entry.value_kind,
+                set_value_name=entry.name if writable else None,
+                enabled_by_default=False,
+                device_key=PROGRAM_VARIABLES_DEVICE_KEY,
+                variable=True,
+            )
+        )
+    return specs
+
+
+def _program_variables_device(runtime_inventory: RuntimeInventory) -> DetectedDevice:
+    """The PLC itself, as the device of its program's variables."""
+    model = (runtime_inventory.controller_identity or "").split(" ", 1)[0] or "PLC"
+    return DetectedDevice(
+        key=PROGRAM_VARIABLES_DEVICE_KEY,
+        name=model,
+        type_key="plc",
+        model=model,
+        subsystem="plc",
+    )
+
+
 def build_catalog(
     entries: tuple[PubEntry, ...],
     runtime_inventory: RuntimeInventory,
@@ -1232,6 +1325,22 @@ def build_catalog(
         else spec
         for spec in program.specs
     )
+    variable_specs = _build_variable_entity_specs(
+        entries,
+        entities,
+        entry_to_device_key,
+        {
+            image_byte
+            for place in module_places(layout, runtime_inventory.devices)
+            for image_byte in place.image_bytes
+        }
+        | placed_bytes,
+    )
+    if variable_specs:
+        entities = entities + tuple(variable_specs)
+        devices_by_key[PROGRAM_VARIABLES_DEVICE_KEY] = _program_variables_device(
+            runtime_inventory
+        )
     state_names = tuple(dict.fromkeys(entity.state_name for entity in entities))
 
     entity_keys_by_device: dict[str, list[str]] = defaultdict(list)

@@ -114,8 +114,10 @@ _BYTE_SIZES = {
     "BOOL": 1,
     "BYTE": 1,
     "USINT": 1,
+    "SINT": 1,
     "INT": 2,
     "UINT": 2,
+    "WORD": 2,
     "DINT": 4,
     "UDINT": 4,
     "DWORD": 4,
@@ -127,7 +129,7 @@ _BYTE_SIZES = {
     "DATE_AND_TIME": 8,
 }
 
-_SIGNED_INT_TYPES = {"INT", "DINT", "TIME", "TIME_OF_DAY"}
+_SIGNED_INT_TYPES = {"SINT", "INT", "DINT", "TIME", "TIME_OF_DAY"}
 
 
 class EpsnetError(RuntimeError):

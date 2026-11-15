@@ -122,9 +122,18 @@ async def _pump_progress(flow, manager, task: asyncio.Task, snapshot) -> None:
             LOGGER.debug("progress refresh skipped: %r", err)
 
 
+def _module_entities_of_the_map(result: SetupResult):
+    """The map's entities on modules: not the program's, not plain variables."""
+    return (
+        entity
+        for entity in result.catalog.entities
+        if not entity.from_program and not entity.variable
+    )
+
+
 def _map_gives_entities(result: SetupResult) -> bool:
-    """True when the map itself gave at least one entity (not only a name)."""
-    return any(not entity.from_program for entity in result.catalog.entities)
+    """True when the map itself gave a module at least one entity (not only a name)."""
+    return any(True for _ in _module_entities_of_the_map(result))
 
 
 def _file_names_a_module(result: SetupResult) -> bool:
@@ -140,7 +149,8 @@ def _file_names_a_module(result: SetupResult) -> bool:
 def _map_can_switch(result: SetupResult) -> bool:
     """True when the map has command variables: something can be switched."""
     return any(
-        entity.platform in ("light", "switch") for entity in result.catalog.entities
+        entity.platform in ("light", "switch")
+        for entity in _module_entities_of_the_map(result)
     )
 
 
@@ -589,7 +599,7 @@ class EpsnetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Create the entry; the summary goes onto Home Assistant's success screen."""
-        from .catalog import unsupported_module_summary
+        from .catalog import PROGRAM_VARIABLES_DEVICE_KEY, unsupported_module_summary
 
         if self._result is None:
             return await self.async_step_run()
@@ -617,8 +627,7 @@ class EpsnetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "named": str(
                 sum(
                     entity.platform in ("binary_sensor", "sensor")
-                    for entity in result.catalog.entities
-                    if not entity.from_program
+                    for entity in _module_entities_of_the_map(result)
                 )
                 + result.catalog.channels_named_by_map
             ),
@@ -629,6 +638,14 @@ class EpsnetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description = "with_names"
         else:
             description = "names_only"
+        spare = result.catalog.variable_entity_count
+        if spare:
+            # the program's other variables wait as disabled entities
+            description += "_spare"
+            placeholders |= {
+                "spare": str(spare),
+                "plc": result.catalog.devices_by_key[PROGRAM_VARIABLES_DEVICE_KEY].name,
+            }
         unsupported_count, unsupported_codes = unsupported_module_summary(
             result.catalog
         )

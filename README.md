@@ -25,7 +25,9 @@ Modules the integration doesn't know yet are not created as devices; they are li
 - the published-variable map (the program's `.pub`) read straight from the PLC, or uploaded
 - without a map: every input and output of the supported CIB modules, read from the PLC program's
   own I/O configuration and shown read-only
-- Home Assistant entities for lights, switches, binary sensors, and sensors
+- Home Assistant entities for lights, switches, binary sensors, sensors, and numbers
+- the program's other published variables (flags, setpoints, commands) as entities you enable
+  when you need them
 - grouped/block polling by default, with automatic fallback to one-by-one reads on grouped-read errors
 - diagnostic merged-catalog output plus poll timing sensors
 
@@ -89,7 +91,9 @@ A question is asked only when the PLC cannot answer it:
 - **Another program is connected to the PLC** (for example the programming tool): close it and
   try again, or upload the `.pub` file instead.
 - **The uploaded file matches none of the modules** (none of its variables is an input or an
-  output of a module): it is probably from another project. Upload another one, or use it anyway.
+  output of a module): it is probably from another project. Upload another one, or use it anyway
+  when the program really publishes only its internal variables; they become the disabled
+  entities described below.
 
 The PLC's modules are always scanned live, so entities are created only for hardware that is
 actually there. The variable names are stored in the config entry and are not re-read on their
@@ -137,7 +141,23 @@ otherwise a switch. For a dimmer output, `Lamp` is a `REAL` with the level in pe
 Assistant writes when you set the brightness. An output without these variables is shown but
 cannot be switched; when the map has none at all, the summary at the end of setup says so.
 
-Other variables in the program's memory (setpoints, modes, flags) get no entities yet.
+**The program's other variables.** Whatever else the program publishes (flags, modes, setpoints,
+commands under names of its own) is offered as an entity that is simply the variable's value. These
+entities belong to a device that stands for the PLC itself and is named by its type:
+
+| Variable | Entity |
+| --- | --- |
+| `BOOL` in the program's memory (`R`) | switch: on writes 1, off writes 0 |
+| a number in the program's memory (integer types, `REAL`, `LREAL`) | number: shows the value and sets it |
+| published for reading only (`PUB_OUT`), or outside the program's memory | binary sensor or sensor |
+
+They are created **disabled**: nothing tells a command from a status flag, and a program can
+publish hundreds of variables. Enable the ones you need on the device's page; only then are they
+read. This is also how a program without `_ON` / `_OFF` variables is controlled: enable the
+variables it takes its commands from. Home Assistant writes the value as it is, and what happens
+next is up to the program; a command the program clears itself shows as off again a moment later.
+An entity you never enabled goes away when the program stops publishing its variable. Time, date
+and text variables get no entity.
 
 Without a map, setup can still continue: the integration reads the I/O configuration compiled into
 the PLC program (which module sits where in the PLC's memory) and creates an entity for every input
@@ -224,8 +244,7 @@ Grouped/block polling is the default production read path.
 - The direct EPSNET backend is reverse-engineered and intentionally focused on the request/response
   patterns needed by the current entity set.
 - Without a variable map, inputs and outputs are read-only and CIB modules only (see above).
-- Variables that are neither a module's input or output nor an output's state and command
-  variables (setpoints, modes, flags in the program's memory) get no entities.
+- Time, date, text and structured variables of the program get no entities.
 - Advanced room-controller features such as richer HVAC/setpoint behavior are still out of scope for the
   current public release.
 

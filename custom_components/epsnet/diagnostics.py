@@ -146,6 +146,8 @@ def build_catalog_snapshot(
             "pub_entry_count": len(real_entries),
             # inputs / outputs placed from the program that carry a map variable's name
             "channels_named_by_map": catalog.channels_named_by_map,
+            # variables no module entity uses, offered as entities of their own
+            "program_variable_entities": catalog.variable_entity_count,
         },
         "controller_identity": catalog.runtime_inventory.controller_identity,
         "root_identity": catalog.runtime_inventory.root_identity,

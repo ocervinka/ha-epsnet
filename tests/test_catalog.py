@@ -3,7 +3,11 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from custom_components.epsnet.catalog import _match_runtime_inventory, build_catalog
+from custom_components.epsnet.catalog import (
+    PROGRAM_VARIABLES_DEVICE_KEY,
+    _match_runtime_inventory,
+    build_catalog,
+)
 from custom_components.epsnet.models import (
     AddressRange,
     DetectedDevice,
@@ -393,14 +397,20 @@ def test_build_catalog_maps_observed_tecomat_family_to_exact_model() -> None:
     ]
 
 
-def test_build_catalog_ignores_undiscovered_pub_clusters() -> None:
+def test_build_catalog_gives_undiscovered_pub_clusters_no_module_entities() -> None:
     catalog = build_catalog(load_pub_entries(FIXTURE), _make_runtime_inventory([0x0C1D]))
 
-    assert set(catalog.devices_by_key) == {"dimmer_r1"}
-    assert [entity.name for entity in catalog.entities_for_platform("light")] == [
-        "light_1"
+    # their variables are only offered as plain variables of the program
+    assert set(catalog.devices_by_key) == {"dimmer_r1", PROGRAM_VARIABLES_DEVICE_KEY}
+    module_entities = [entity for entity in catalog.entities if not entity.variable]
+    assert [(entity.platform, entity.name) for entity in module_entities] == [
+        ("light", "light_1")
     ]
-    assert not catalog.entities_for_platform("switch")
+    assert all(
+        entity.device_key == PROGRAM_VARIABLES_DEVICE_KEY and not entity.enabled_by_default
+        for entity in catalog.entities
+        if entity.variable
+    )
     assert tuple(device.key for device in catalog.unmatched_pub_devices) == (
         "c_it_0200i",
         "input_r2",

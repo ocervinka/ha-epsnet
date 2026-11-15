@@ -18,7 +18,12 @@ async def async_setup_entry(hass, entry, async_add_entities) -> None:
 
 
 class EpsnetSwitchEntity(EpsnetEntity, SwitchEntity):
-    """Switch entity backed by `OUTPUT_*` variables."""
+    """A switch: an output with its command variables, or a plain variable.
+
+    An output is switched by pressing its ``_ON`` / ``_OFF`` command variables.
+    A plain variable of the program (``spec.variable``) is the switch itself:
+    turning it on or off writes 1 or 0 into it.
+    """
 
     def __init__(self, coordinator, spec, *, entry_id: str) -> None:
         super().__init__(coordinator, spec, entry_id=entry_id)
@@ -30,13 +35,25 @@ class EpsnetSwitchEntity(EpsnetEntity, SwitchEntity):
         return None if value is None else bool(value)
 
     async def async_turn_on(self, **kwargs) -> None:
+        if self.spec.variable:
+            await self._async_write_variable(True)
+            return
         if self.spec.on_command_name is None:
             raise HomeAssistantError(f"{self.name} does not support turning on")
         await self.coordinator.async_press_command(self.spec.on_command_name)
         self._set_optimistic_state(True)
 
     async def async_turn_off(self, **kwargs) -> None:
+        if self.spec.variable:
+            await self._async_write_variable(False)
+            return
         if self.spec.off_command_name is None:
             raise HomeAssistantError(f"{self.name} does not support turning off")
         await self.coordinator.async_press_command(self.spec.off_command_name)
         self._set_optimistic_state(False)
+
+    async def _async_write_variable(self, value: bool) -> None:
+        if self.spec.set_value_name is None:
+            raise HomeAssistantError(f"{self.name} cannot be written")
+        await self.coordinator.async_set_scalar(self.spec.set_value_name, value)
+        self._set_optimistic_state(value)

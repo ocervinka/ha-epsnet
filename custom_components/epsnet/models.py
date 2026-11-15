@@ -31,8 +31,10 @@ _BYTE_SIZES = {
     "BOOL": 1,
     "BYTE": 1,
     "USINT": 1,
+    "SINT": 1,
     "INT": 2,
     "UINT": 2,
+    "WORD": 2,
     "DINT": 4,
     "UDINT": 4,
     "DWORD": 4,
@@ -63,8 +65,10 @@ def _value_kind_for_data_type(data_type: str) -> ValueKind:
     if normalized in {
         "BYTE",
         "USINT",
+        "SINT",
         "INT",
         "UINT",
+        "WORD",
         "DINT",
         "UDINT",
         "TIME",
@@ -524,6 +528,9 @@ class EntitySpec:
     diagnostic: bool = False
     # placed from the PLC program's I/O layout (not from the variable map)
     from_program: bool = False
+    # a published variable no module entity uses, offered as it is: its value,
+    # written directly when the variable lies in the program's memory
+    variable: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -545,6 +552,11 @@ class EntityCatalog:
     program_report: tuple[dict[str, object], ...] = ()
     # inputs / outputs placed from the program that took a map variable's name
     channels_named_by_map: int = 0
+
+    @property
+    def variable_entity_count(self) -> int:
+        """How many of the program's variables are offered as entities of their own."""
+        return sum(1 for entity in self.entities if entity.variable)
 
     def entities_for_platform(self, platform: str) -> tuple[EntitySpec, ...]:
         """Return all entity specs for one Home Assistant platform."""

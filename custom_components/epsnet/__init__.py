@@ -160,6 +160,30 @@ def _async_remove_stale_program_entities(hass, entry, catalog: EntityCatalog) ->
             registry.async_remove(item.entity_id)
 
 
+def _async_remove_unused_variable_entities(hass, entry, catalog: EntityCatalog) -> None:
+    """Drop the never-enabled entities of variables the program no longer publishes.
+
+    A variable's entity is created disabled. One the user never enabled has no
+    history and no settings, so when its variable goes (another program, a
+    renamed variable) nothing is lost with it. One the user enabled stays, as
+    any entity that is no longer provided.
+    """
+    from homeassistant.helpers import entity_registry as er
+
+    from .catalog import PROGRAM_VARIABLE_KEY_PREFIX
+
+    registry = er.async_get(hass)
+    prefix = f"{entry.entry_id}_{PROGRAM_VARIABLE_KEY_PREFIX}"
+    current = {f"{entry.entry_id}_{spec.key}" for spec in catalog.entities if spec.variable}
+    for item in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if (
+            item.unique_id.startswith(prefix)
+            and item.unique_id not in current
+            and item.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+        ):
+            registry.async_remove(item.entity_id)
+
+
 def _log_shared_addresses(entry) -> None:
     from .diagnostics import map_shared_addresses
 
@@ -351,6 +375,7 @@ async def async_setup_entry(hass, entry) -> bool:
         )
         _async_update_unsupported_issue(hass, entry, catalog)
         _async_remove_stale_program_entities(hass, entry, catalog)
+        _async_remove_unused_variable_entities(hass, entry, catalog)
         _log_shared_addresses(entry)
         _async_update_no_map_issue(hass, entry, catalog, has_map=bool(entries))
         if entries and not catalog.devices_by_key:
