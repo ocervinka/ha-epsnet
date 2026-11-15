@@ -159,6 +159,105 @@ async def test_turn_on_reaches_the_client_write(hass: HomeAssistant) -> None:
         assert set_value.await_count >= 1, "turn_on should reach the client write path"
 
 
+def _patch_slow_plc(scanned: asyncio.Event, read: asyncio.Event):
+    """A PLC whose module scan and names read end when the test says so."""
+
+    async def _inventory(*_a, **_k):
+        await scanned.wait()
+        return SYNTH_INVENTORY
+
+    async def _fetch(*_a, **_k):
+        await read.wait()
+        return ("SIM PLC", SYNTH_ENTRIES)
+
+    return patch.multiple(
+        _CLIENT,
+        discover_runtime_inventory=AsyncMock(side_effect=_inventory),
+        async_fetch_pub_from_plc=AsyncMock(side_effect=_fetch),
+    )
+
+
+_FLOW = "custom_components.epsnet.config_flow"
+
+
+async def test_fetching_the_progress_screen_causes_no_further_fetch(
+    hass: HomeAssistant,
+) -> None:
+    """Home Assistant tells the frontend to fetch the step again whenever a
+    fetch returned another text than the one before. Only the flow's own
+    refresher may change the text, or every fetch during a read causes the next."""
+    scanned, read = asyncio.Event(), asyncio.Event()
+    told_to_fetch = []
+    hass.bus.async_listen("data_entry_flow_progressed", told_to_fetch.append)
+    with _patch_client(AsyncMock()), _patch_slow_plc(scanned, read), patch(
+        f"{_FLOW}._PROGRESS_POLL_SECONDS", 60
+    ):
+        result = await _pick_found_plc(hass)
+        assert result["progress_action"] == "connect"
+        scanned.set()  # the modules are known: the text to show is another now
+        await asyncio.sleep(0.05)
+
+        for _ in range(3):  # the frontend fetches, for whatever reason
+            result = await hass.config_entries.flow.async_configure(result["flow_id"])
+            assert result["progress_action"] == "connect"
+        await asyncio.sleep(0.05)
+        assert told_to_fetch == []
+
+        read.set()
+        await hass.async_block_till_done()
+        result = await hass.config_entries.flow.async_configure(result["flow_id"])
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+
+
+async def test_the_read_does_not_end_while_the_frontend_is_fetching_new_text(
+    hass: HomeAssistant,
+) -> None:
+    """Any fetch of a finished flow moves it on: the first creates the entry,
+    a second finds no flow ("Invalid flow specified"). So a fetch the
+    refresher caused must have arrived before the read may end."""
+    scanned, read = asyncio.Event(), asyncio.Event()
+    told_to_fetch = []
+    hass.bus.async_listen("data_entry_flow_progressed", told_to_fetch.append)
+    with _patch_client(AsyncMock()), _patch_slow_plc(scanned, read), patch(
+        f"{_FLOW}._PROGRESS_POLL_SECONDS", 0.01
+    ), patch(f"{_FLOW}._PROGRESS_SETTLE_SECONDS", 30):
+        result = await _pick_found_plc(hass)
+        scanned.set()
+        await asyncio.sleep(0.1)  # the refresher shows the next text...
+        assert len(told_to_fetch) == 1  # ...and the frontend is told to fetch it
+        read.set()  # the read is over before that fetch arrives
+        await asyncio.sleep(0.1)
+
+        # the fetch still finds the read's screen, not the finished flow
+        result = await hass.config_entries.flow.async_configure(result["flow_id"])
+        assert result["type"] == FlowResultType.SHOW_PROGRESS
+        assert result["progress_action"] == "read_names"
+
+        # now the read ends, and the one fetch that follows creates the entry
+        await hass.async_block_till_done()
+        assert len(told_to_fetch) == 2
+        result = await hass.config_entries.flow.async_configure(result["flow_id"])
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+
+
+async def test_a_read_nobody_watches_ends_after_a_moment(hass: HomeAssistant) -> None:
+    """Without a frontend (a script driving the flow) nothing fetches the text."""
+    scanned, read = asyncio.Event(), asyncio.Event()
+    with _patch_client(AsyncMock()), _patch_slow_plc(scanned, read), patch(
+        f"{_FLOW}._PROGRESS_POLL_SECONDS", 0.01
+    ), patch(f"{_FLOW}._PROGRESS_SETTLE_SECONDS", 0.2):
+        result = await _pick_found_plc(hass)
+        scanned.set()
+        await asyncio.sleep(0.1)
+        read.set()
+        await hass.async_block_till_done()
+        result = await hass.config_entries.flow.async_configure(result["flow_id"])
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+
+
 async def test_poll_metric_sensors_take_their_names_from_translations(
     hass: HomeAssistant,
 ) -> None:

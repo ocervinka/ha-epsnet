@@ -19,6 +19,7 @@ from datetime import timedelta
 from ipaddress import ip_address
 import logging
 import socket
+from time import monotonic
 from typing import Any
 
 from homeassistant import config_entries
@@ -77,6 +78,9 @@ _MANUAL = "manual"
 
 _PUB_UPLOAD_ACCEPT = ".pub,.piz,.zip,text/plain"
 _PROGRESS_POLL_SECONDS = 0.5
+# How long a finished read waits for the frontend to fetch the last text it was
+# told about, before the step ends (see ``ProgressSteps``).
+_PROGRESS_SETTLE_SECONDS = 2.0
 _DOWNLOAD_LINK_LIFETIME = timedelta(minutes=10)
 
 _PORT = vol.All(vol.Coerce(int), vol.Range(min=1, max=65535))
@@ -95,29 +99,86 @@ def _fetch_progress(client) -> tuple[str, float | None]:
     return f"{read // 1024} / {total // 1024} kB", min(read / total, 1.0)
 
 
-async def _pump_progress(flow, manager, task: asyncio.Task, snapshot) -> None:
+class ProgressSteps:
+    """What the steps that run a read of the PLC under a progress screen share.
+
+    Home Assistant gives the frontend the step's text only when it fetches the
+    step, and tells it to fetch again whenever a fetch returned another text
+    than the one before. A fetch is also what moves a finished flow on: the
+    first one after the read creates the entry (or applies the names), and a
+    second one finds no flow and shows "Invalid flow specified". So the text
+    must change in one place only, and the read must not end while a fetch
+    is still on its way:
+
+    - the step always renders ``_progress_shown``, which only the pump
+      (``_pump_progress``) moves; a fetch by the frontend returns what it
+      already shows and causes no further fetch;
+    - the pump counts the fetches it causes (``_progress_waiting``) and the
+      step counts them off as they arrive;
+    - when its work is done, the read stops the pump and waits until none is
+      outstanding (``_async_settled``), a moment at most.
+    """
+
+    _progress_shown: tuple[str, dict[str, str] | None, float | None] | None = None
+    _progress_waiting = 0
+    _progress_pumping = False
+    _progress_settling = False
+
+    def _progress_begin(self) -> None:
+        self._progress_shown = self._progress_state()
+        self._progress_waiting = 0
+        self._progress_settling = False
+
+    def _progress_rendered(self) -> tuple[str, dict[str, str] | None]:
+        """(action, placeholders) to show; called for every render of the step."""
+        if not self._progress_pumping and self._progress_waiting > 0:
+            self._progress_waiting -= 1  # the frontend fetched what the pump announced
+        assert self._progress_shown is not None
+        return self._progress_shown[0], self._progress_shown[1]
+
+    async def _async_settled(self, work):
+        """Run the read; before it ends, let the frontend catch up."""
+        try:
+            return await work
+        finally:
+            self._progress_settling = True
+            if not asyncio.current_task().cancelling():
+                deadline = monotonic() + _PROGRESS_SETTLE_SECONDS
+                while self._progress_waiting > 0 and monotonic() < deadline:
+                    await asyncio.sleep(0.05)
+
+
+async def _pump_progress(flow: ProgressSteps, manager, task: asyncio.Task) -> None:
     """Re-render the progress step whenever what it shows has changed.
 
-    ``snapshot()`` returns ``(progress_action, placeholders, fraction)``. A new
-    fraction moves the frontend's determinate bar (``async_update_progress``);
-    a new action or placeholder re-invokes the step (``manager.async_configure``)
-    -- the only way fresh text reaches the frontend, which serialises a snapshot
-    rather than live ``cur_step``. Best-effort: a UI hiccup never breaks setup.
+    ``flow._progress_state()`` returns ``(progress_action, placeholders,
+    fraction)``. A new fraction moves the frontend's determinate bar
+    (``async_update_progress``); a new action or placeholder re-invokes the
+    step (``manager.async_configure``), upon which Home Assistant tells the
+    frontend to fetch it -- the only way fresh text reaches the frontend.
+    Best-effort: a UI hiccup never breaks setup.
     """
-    shown = snapshot()
     while not task.done():
         # Wakes at once when the task ends, so a finished flow leaves nothing behind.
         await asyncio.wait([task], timeout=_PROGRESS_POLL_SECONDS)
-        if task.done():
+        if task.done() or flow._progress_settling:
             break
         try:
-            state = snapshot()
+            state = flow._progress_state()
+            shown = flow._progress_shown
             if state == shown:
                 continue
-            shown = state
+            flow._progress_shown = state
             if state[2] is not None:
                 flow.async_update_progress(state[2])
-            await manager.async_configure(flow.flow_id)
+            if shown is not None and state[:2] == shown[:2]:
+                continue
+            flow._progress_waiting += 1
+            flow._progress_pumping = True
+            try:
+                await manager.async_configure(flow.flow_id)
+            finally:
+                flow._progress_pumping = False
         except Exception as err:  # noqa: BLE001 - UI refresh must never break setup
             LOGGER.debug("progress refresh skipped: %r", err)
 
@@ -173,7 +234,7 @@ def _pub_file_schema() -> vol.Schema:
     )
 
 
-class EpsnetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class EpsnetConfigFlow(ProgressSteps, config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for EPSNET."""
 
     VERSION = 4
@@ -452,19 +513,15 @@ class EpsnetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Not eager: the step always shows its progress first, also when
             # the read fails at once.
             self._setup_task = self.hass.async_create_task(
-                self._async_do_setup(), eager_start=False
+                self._async_settled(self._async_do_setup()), eager_start=False
             )
+            self._progress_begin()
             self.hass.async_create_task(
-                _pump_progress(
-                    self,
-                    self.hass.config_entries.flow,
-                    self._setup_task,
-                    self._progress_state,
-                )
+                _pump_progress(self, self.hass.config_entries.flow, self._setup_task)
             )
 
         if not self._setup_task.done():
-            action, placeholders, _fraction = self._progress_state()
+            action, placeholders = self._progress_rendered()
             return self.async_show_progress(
                 step_id="run",
                 progress_action=action,
@@ -472,8 +529,9 @@ class EpsnetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 progress_task=self._setup_task,
             )
 
+        # No await from here to the step's result: a second fetch arriving in
+        # between would find no task and start the read again.
         task, self._setup_task = self._setup_task, None
-        await self._async_close_client()
         try:
             result = task.result()
         except PlcBusyError:
@@ -500,13 +558,16 @@ class EpsnetConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._ident = inventory.controller_identity or self._ident
             self._modules = len(inventory.devices)
 
-        if self._preset_entries is not None:
-            return await run_setup(
-                self._client,
-                preset_entries=self._preset_entries,
-                preset_source="file",
-            )
-        return await run_setup(self._client, on_inventory=_inventory_read)
+        try:
+            if self._preset_entries is not None:
+                return await run_setup(
+                    self._client,
+                    preset_entries=self._preset_entries,
+                    preset_source="file",
+                )
+            return await run_setup(self._client, on_inventory=_inventory_read)
+        finally:
+            await self._async_close_client()
 
     async def _async_close_client(self) -> None:
         if self._client is not None:
@@ -738,7 +799,7 @@ def apply_reimport(hass, entry, result: SetupResult, *, notify: bool) -> NamesCh
     )
 
 
-class ReimportSteps:
+class ReimportSteps(ProgressSteps):
     """Flow steps that load an existing entry's variable names again, from the
     PLC or from an uploaded file, under a progress step.
 
@@ -833,19 +894,15 @@ class ReimportSteps:
                 self._resolve_reimport_client()
             )
             self._setup_task = self.hass.async_create_task(
-                self._async_reimport(), eager_start=False
+                self._async_settled(self._async_reimport()), eager_start=False
             )
+            self._progress_begin()
             self.hass.async_create_task(
-                _pump_progress(
-                    self,
-                    self._reimport_flow_manager(),
-                    self._setup_task,
-                    self._progress_state,
-                )
+                _pump_progress(self, self._reimport_flow_manager(), self._setup_task)
             )
 
         if not self._setup_task.done():
-            action, placeholders, _fraction = self._progress_state()
+            action, placeholders = self._progress_rendered()
             return self.async_show_progress(
                 step_id=step_id,
                 progress_action=action,
