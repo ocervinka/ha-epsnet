@@ -531,6 +531,10 @@ class EntitySpec:
     # a published variable no module entity uses, offered as it is: its value,
     # written directly when the variable lies in the program's memory
     variable: bool = False
+    # the input that is written to act as a press: a wall button's own input
+    # (a button entity), or the front button of a relay or dimmer output that
+    # has no command variables (a switch that presses it to change the output)
+    press_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

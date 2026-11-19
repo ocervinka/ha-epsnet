@@ -30,7 +30,7 @@ LEGACY_DEFAULT_SCAN_INTERVAL_SECONDS = 5
 DIAGNOSTIC_DIRECTORY = "epsnet"
 MERGED_CATALOG_BASENAME = "merged_catalog"
 
-SUPPORTED_PLATFORMS = ("binary_sensor", "light", "number", "sensor", "switch")
+SUPPORTED_PLATFORMS = ("binary_sensor", "button", "light", "number", "sensor", "switch")
 
 ISSUE_TRACKER_URL = "https://github.com/ocervinka/ha-epsnet/issues"
 # Set when the entry was created without a map, or with one that only names the

@@ -24,8 +24,10 @@ Modules the integration doesn't know yet are not created as devices; they are li
   need no particular form
 - the published-variable map (the program's `.pub`) read straight from the PLC, or uploaded
 - without a map: every input and output of the supported CIB modules, read from the PLC program's
-  own I/O configuration and shown read-only
-- Home Assistant entities for lights, switches, binary sensors, sensors, and numbers
+  own I/O configuration
+- control without command variables: wall buttons can be pressed from Home Assistant, and relay
+  and dimmer outputs switched through the front buttons of their modules
+- Home Assistant entities for lights, switches, buttons, binary sensors, sensors, and numbers
 - the program's other published variables (flags, setpoints, commands) as entities you enable
   when you need them
 - grouped/block polling by default, with automatic fallback to one-by-one reads on grouped-read errors
@@ -86,8 +88,8 @@ integrations page, and **Add** starts at step 2.
 A question is asked only when the PLC cannot answer it:
 
 - **The PLC stores no variable names** (see below): upload the program's `.pub` file, or continue
-  without it. Home Assistant then only shows states and cannot switch anything until you add the
-  file.
+  without it. Home Assistant then names everything by module type and bus address and switches
+  only by pressing buttons (see "Control by a press" below) until you add the file.
 - **Another program is connected to the PLC** (for example the programming tool): close it and
   try again, or upload the `.pub` file instead.
 - **The uploaded file matches none of the modules** (none of its variables is an input or an
@@ -138,8 +140,30 @@ has these variables for it (shown for the name `Lamp`):
 Programs made in FoxTool publish these for every output. In a program you write yourself you add
 them, with the few lines that act on them. The entity is a light when the name contains `light`,
 otherwise a switch. For a dimmer output, `Lamp` is a `REAL` with the level in percent, which Home
-Assistant writes when you set the brightness. An output without these variables is shown but
-cannot be switched; when the map has none at all, the summary at the end of setup says so.
+Assistant writes when you set the brightness. An output without these variables is switched by a
+press of its front button instead (next paragraph); when the map has none at all, the summary at
+the end of setup says so.
+
+**Control by a press.** The PLC takes a 1 written to an input as one short press: the program sees
+it for a cycle, then the PLC reads the real input again. The integration uses this in two places,
+with or without a map:
+
+- **Wall buttons.** Every button of a wall-switch module has a button entity next to its sensor.
+  Pressing it in Home Assistant does whatever your program does when someone presses the real
+  button. Only a short press can be made, not a long or a double one.
+- **Relay and dimmer outputs.** These modules have a small front button for each output, and
+  programs made in FoxTool flip output *n* on front button *n* (a dimmer output goes to 100 % or
+  to 0). An output without command variables is therefore a switch: Home Assistant reads the
+  output, presses the front button only when the output is not in the wanted state, and reads the
+  output back. If it did not change, the program does not act on that button: the switch reports
+  an error and keeps showing the real state. A dimmer output keeps its level sensor and gets the
+  on/off switch beside it; a level cannot be set this way.
+
+An output that has command variables is switched through them, never by a press. In a program
+you write yourself, one line per output that flips it on its front button is enough. This was
+measured on a CU2-01M central unit (firmware 7.2), with a FoxTool program and with hand-written
+ones, on the SA2-012M, SA2-04M/Sn and DA2-22M modules. Another CPU or firmware may treat a written
+input differently; please report what you see.
 
 **The program's other variables.** Whatever else the program publishes (flags, modes, setpoints,
 commands under names of its own) is offered as an entity that is simply the variable's value. These
@@ -162,11 +186,13 @@ and text variables get no entity.
 Without a map, setup can still continue: the integration reads the I/O configuration compiled into
 the PLC program (which module sits where in the PLC's memory) and creates an entity for every input
 and output of the supported CIB modules — buttons, inputs, temperatures, relay and LED states,
-dimmer levels. They are **read-only** and named by module type and bus address (e.g. *WSB2-40 1A2B
-Temperature*): the PLC program rewrites the outputs every cycle, so they can be shown but not
-switched without the program's command variables. Adding the `.pub` later keeps those entities
-(same entity IDs, history and automations), gives them the names from your program and adds the
-lights and switches the program has command variables for. Modules on a CPU's internal bus (not
+dimmer levels. They are named by module type and bus address (e.g. *WSB2-40 1A2B Temperature*).
+The PLC program rewrites the outputs every cycle, so an output cannot be written directly; what
+Home Assistant can do without the program's command variables is press buttons (see "Control by a
+press" above). Adding the `.pub` later keeps those entities (same entity IDs, history and
+automations), gives them the names from your program and adds the lights and switches the program
+has command variables for; an output that gets them is then shown by a binary sensor beside its
+light or switch, no longer by a press switch. Modules on a CPU's internal bus (not
 CIB) are not covered.
 
 With a map, the channels none of its entities shows (e.g. tamper contacts, status flags, the
@@ -243,7 +269,8 @@ Grouped/block polling is the default production read path.
 
 - The direct EPSNET backend is reverse-engineered and intentionally focused on the request/response
   patterns needed by the current entity set.
-- Without a variable map, inputs and outputs are read-only and CIB modules only (see above).
+- Without a variable map: CIB modules only, names by module type and bus address, and control
+  only by a press (see above).
 - Time, date, text and structured variables of the program get no entities.
 - Advanced room-controller features such as richer HVAC/setpoint behavior are still out of scope for the
   current public release.

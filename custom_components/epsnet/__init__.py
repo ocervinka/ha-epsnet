@@ -117,7 +117,7 @@ def _async_update_no_map_issue(
     if from_program:
         LOGGER.warning(
             "No published-variable map for %s: %d module channels placed from the PLC "
-            "program, read-only and named by module",
+            "program, named by module and switched only by a press of their buttons",
             entry.title,
             from_program,
         )
@@ -157,6 +157,25 @@ def _async_remove_stale_program_entities(hass, entry, catalog: EntityCatalog) ->
     for item in er.async_entries_for_config_entry(registry, entry.entry_id):
         if item.unique_id.startswith(prefix) and item.unique_id not in current:
             LOGGER.info("Removing %s: its channel is no longer placed from the program", item.entity_id)
+            registry.async_remove(item.entity_id)
+
+
+def _async_remove_replaced_entities(hass, entry, catalog: EntityCatalog) -> None:
+    """Drop registry entries of entities that are now of another kind.
+
+    An output shown by a binary sensor becomes a switch when it can be
+    switched (by its front button, or once the map has command variables).
+    The entity keeps its identity but not its kind, so the old one would stay
+    behind as "no longer provided".
+    """
+    from homeassistant.helpers import entity_registry as er
+
+    registry = er.async_get(hass)
+    platform_of = {f"{entry.entry_id}_{spec.key}": spec.platform for spec in catalog.entities}
+    for item in er.async_entries_for_config_entry(registry, entry.entry_id):
+        platform = platform_of.get(item.unique_id)
+        if platform is not None and platform != item.domain:
+            LOGGER.info("Removing %s: it is a %s now", item.entity_id, platform)
             registry.async_remove(item.entity_id)
 
 
@@ -375,6 +394,7 @@ async def async_setup_entry(hass, entry) -> bool:
         )
         _async_update_unsupported_issue(hass, entry, catalog)
         _async_remove_stale_program_entities(hass, entry, catalog)
+        _async_remove_replaced_entities(hass, entry, catalog)
         _async_remove_unused_variable_entities(hass, entry, catalog)
         _log_shared_addresses(entry)
         _async_update_no_map_issue(hass, entry, catalog, has_map=bool(entries))

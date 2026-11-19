@@ -35,7 +35,9 @@ class EpsnetEntity(CoordinatorEntity):
 
     @property
     def available(self) -> bool:
-        if self.spec.from_program and self.coordinator.program_layout_stale:
+        # placed from the program, or pressing an input placed from it
+        placed = self.spec.from_program or self.spec.press_name is not None
+        if placed and self.coordinator.program_layout_stale:
             return False
         return super().available and self.spec.state_name in self.coordinator.data
 

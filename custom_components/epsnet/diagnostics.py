@@ -148,6 +148,12 @@ def build_catalog_snapshot(
             "channels_named_by_map": catalog.channels_named_by_map,
             # variables no module entity uses, offered as entities of their own
             "program_variable_entities": catalog.variable_entity_count,
+            # control by a written press: wall buttons, and outputs switched
+            # through the front button of their module
+            "press_buttons": sum(e.platform == "button" for e in catalog.entities),
+            "press_switches": sum(
+                e.platform == "switch" and e.press_name is not None for e in catalog.entities
+            ),
         },
         "controller_identity": catalog.runtime_inventory.controller_identity,
         "root_identity": catalog.runtime_inventory.root_identity,

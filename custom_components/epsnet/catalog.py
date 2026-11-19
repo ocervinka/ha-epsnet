@@ -14,7 +14,12 @@ from dataclasses import dataclass, replace
 from functools import cmp_to_key, lru_cache
 import re
 
-from .program_entities import ModulePlace, build_program_entities, module_places
+from .program_entities import (
+    ModulePlace,
+    PlacedChannel,
+    build_program_entities,
+    module_places,
+)
 from .runtime_registry import RUNTIME_MODEL_INFOS_BY_CODE
 from .models import (
     AddressRange,
@@ -27,6 +32,7 @@ from .models import (
     PubEntry,
     RuntimeDiscoveredDevice,
     RuntimeInventory,
+    ValueKind,
 )
 
 _STATE_PREFIX = "state_"
@@ -45,6 +51,10 @@ _VARIABLE_NUMBER_TYPES = frozenset(
 )
 # the client reads and writes with 16-bit addresses
 _LAST_ADDRESS = 0xFFFF
+# Key endings of what a press of an input gives: the input as it is written,
+# and the on/off switch of an output that is shown by a value sensor.
+PRESS_KEY_SUFFIX = "_press"
+PRESS_SWITCH_KEY_SUFFIX = "_switch"
 
 GENERIC_MODEL_DEFINITIONS = (
     DeviceTypeDefinition(
@@ -1179,6 +1189,125 @@ def _build_variable_entity_specs(
     return specs
 
 
+def _press_entry(button: PlacedChannel) -> PubEntry:
+    """The input of a button, as the place a press is written to."""
+    return PubEntry(
+        name=button.key + PRESS_KEY_SUFFIX,
+        register=button.register,
+        storage="B",
+        address=button.address,
+        bit=button.bit,
+        data_type="BOOL",
+        access="PUB_INOUT",
+        line_number=0,
+        is_virtual=True,
+    )
+
+
+def _add_press_entities(
+    entities: tuple[EntitySpec, ...],
+    entries_by_name: dict[str, PubEntry],
+    channels: list[PlacedChannel],
+) -> tuple[tuple[EntitySpec, ...], dict[str, PubEntry]]:
+    """What a written press can do, with or without a variable map.
+
+    The PLC takes a 1 written to an input as one short press: the program sees
+    it for a cycle, then the PLC reads the input again. So:
+
+    - every button of a wall-switch module gets a button entity that presses
+      it. The program does whatever it does on a press of the real button.
+    - a relay or dimmer module has a front button per output, and programs
+      commonly flip output n on front button n. An output without command
+      variables becomes a switch that presses its front button when the output
+      is not in the wanted state, and reads the output back. A dimmer output
+      keeps its level sensor and gets the switch beside it.
+
+    Needs the program's I/O layout (it says where the buttons are). Returns the
+    entities and the entries of the inputs that are pressed.
+    """
+    specs = list(entities)
+    shown: dict[tuple[str, int, int | None], int] = {}
+    commanded: set[tuple[str, int, int | None]] = set()
+    for index, spec in enumerate(specs):
+        if spec.variable:
+            continue
+        entry = entries_by_name[spec.state_name]
+        if entry.register in ("X", "Y"):
+            shown.setdefault((entry.register, entry.address, entry.bit), index)
+        if spec.platform in ("light", "switch"):
+            # an output its command variables switch: the map says where it is
+            output = entries_by_name.get(_STATE_PREFIX + spec.state_name)
+            if output is not None and output.register == "Y":
+                commanded.add((output.register, output.address, output.bit))
+
+    pressed: dict[str, PubEntry] = {}
+    added: list[EntitySpec] = []
+    front_buttons: dict[str, list[PlacedChannel]] = defaultdict(list)
+    outputs: dict[str, list[PlacedChannel]] = defaultdict(list)
+    for channel in channels:
+        if channel.role == "local_switch":
+            front_buttons[channel.module].append(channel)
+        elif channel.role in ("relay", "dimmer"):
+            outputs[channel.module].append(channel)
+        if channel.role != "button":
+            continue
+        index = shown.get((channel.register, channel.address, channel.bit))
+        sensor = specs[index] if index is not None else None
+        entry = _press_entry(channel)
+        pressed[entry.name] = entry
+        added.append(
+            EntitySpec(
+                key=entry.name,
+                platform="button",
+                name=sensor.name if sensor else channel.label,
+                state_name=entry.name,
+                value_kind=ValueKind.BOOL,
+                enabled_by_default=sensor.enabled_by_default if sensor else True,
+                device_key=sensor.device_key if sensor else channel.device_key,
+                from_program=True,
+                press_name=entry.name,
+            )
+        )
+
+    for module, module_outputs in outputs.items():
+        buttons = front_buttons.get(module, [])
+        if len(buttons) != len(module_outputs):
+            continue  # no front button per output: nothing says which is whose
+        for button, output in zip(buttons, module_outputs):
+            place = (output.register, output.address, output.bit)
+            index = shown.get(place)
+            if place in commanded or index is None:
+                continue
+            spec = specs[index]
+            entry = _press_entry(button)
+            if spec.platform == "binary_sensor":
+                specs[index] = replace(
+                    spec,
+                    platform="switch",
+                    device_class="outlet" if "plug" in spec.name.lower() else None,
+                    press_name=entry.name,
+                )
+            elif spec.platform == "sensor":
+                added.append(
+                    EntitySpec(
+                        key=output.key + PRESS_SWITCH_KEY_SUFFIX,
+                        platform="switch",
+                        name=spec.name,
+                        state_name=spec.state_name,
+                        value_kind=spec.value_kind,
+                        enabled_by_default=spec.enabled_by_default,
+                        device_key=spec.device_key,
+                        transform_read=spec.transform_read,
+                        from_program=True,
+                        press_name=entry.name,
+                    )
+                )
+            else:
+                continue
+            pressed[entry.name] = entry
+    return tuple(specs + added), pressed
+
+
 def _program_variables_device(runtime_inventory: RuntimeInventory) -> DetectedDevice:
     """The PLC itself, as the device of its program's variables."""
     model = (runtime_inventory.controller_identity or "").split(" ", 1)[0] or "PLC"
@@ -1325,6 +1454,8 @@ def build_catalog(
         else spec
         for spec in program.specs
     )
+    entities, pressed = _add_press_entities(entities, entries_by_name, program.channels)
+    entries_by_name.update(pressed)
     variable_specs = _build_variable_entity_specs(
         entries,
         entities,

@@ -83,7 +83,7 @@ def _by_key(catalog):
     return {e.key: e for e in catalog.entities if e.from_program}
 
 
-def test_without_a_map_every_channel_gets_a_read_only_entity():
+def test_without_a_map_every_channel_gets_an_entity():
     layout = _layout(HOUSE)
     catalog = build_catalog((), _inventory(layout, [WSB, RELAY, DIMMER]))
     entities = _by_key(catalog)
@@ -98,13 +98,14 @@ def test_without_a_map_every_channel_gets_a_read_only_entity():
     assert (up1.register, up1.address, up1.bit) == ("X", 4, 0)
     relay12 = catalog.entries_by_name["io_0_2_3151_2b3c_relay_re12"]
     assert (relay12.register, relay12.address, relay12.bit) == ("Y", 2, 3)
-    assert entities["io_0_2_3151_2b3c_relay_re12"].platform == "binary_sensor"
     out2 = catalog.entries_by_name["io_0_2_3101_3c4d_dimmer_out2"]
     assert (out2.register, out2.address, out2.data_type) == ("Y", 7, "REAL")
-    # no switches or lights: outputs are shown, not switched
-    assert {e.platform for e in entities.values()} == {"sensor", "binary_sensor"}
-    # 4 buttons + temp + 4 LEDs, 12 + 12, 2 + 2 + 2
-    assert len(entities) == 9 + 24 + 6
+    # no lights: nothing is switched by command variables, only by a press
+    assert {e.platform for e in entities.values()} == {
+        "sensor", "binary_sensor", "button", "switch"}
+    # 4 buttons + temp + 4 LEDs, 12 + 12, 2 + 2 + 2; a press for each of the
+    # 4 wall buttons, a switch beside each of the 2 dimmer levels
+    assert len(entities) == 9 + 24 + 6 + 4 + 2
     devices = {e.device_key for e in entities.values()}
     assert {catalog.devices_by_key[k].name for k in devices} == {
         "WSB2-40 1A2B", "SA2-012M 2B3C", "DA2-22M 3C4D"}
@@ -293,7 +294,7 @@ def test_entries_set_up_with_a_map_are_unchanged_by_the_flag():
     with_map_entities = {e.device_key for e in normal.entities if not e.from_program}
     assert with_map_entities
     for e in normal.entities:
-        if e.from_program and not e.diagnostic:
+        if e.from_program and not e.diagnostic and e.press_name is None:
             # disabled where the map already shows the module, enabled where it shows nothing
             assert e.enabled_by_default == (e.device_key not in with_map_entities)
 
@@ -328,8 +329,9 @@ def test_room_controller_variants(conv_in, raw_in, expected):
     values = {k.rsplit("5a5a_", 1)[1]: catalog.entries_by_name[k] for k, e in entities.items()
               if e.platform == "sensor"}
     assert {k: (v.register, v.address, v.data_type) for k, v in values.items()} == expected
-    buttons = [k for k in entities if "_button_" in k]
+    buttons = [k for k, e in entities.items() if "_button_" in k and e.platform == "binary_sensor"]
     assert len(buttons) == 5
+    assert sum(e.platform == "button" for e in entities.values()) == 5
     assert all(e.platform != "sensor" or e.device_class in ("temperature", "humidity")
                for e in entities.values())
 

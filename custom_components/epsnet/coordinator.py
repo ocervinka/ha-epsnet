@@ -26,6 +26,17 @@ _POLL_METRICS_EMA_ALPHA = 0.2
 # With that alpha the first read's share of the average is below 2 % after this many.
 _TIMING_SETTLED_AFTER_READS = 20
 _POLL_METRICS_PUBLISH_INTERVAL_SECONDS = 5.0
+# After a press, how long an output is given to change and how often it is read.
+# A program reacts within a few of its cycles (measured: 70 to 210 ms).
+PRESS_CONFIRM_SECONDS = 1.5
+PRESS_POLL_SECONDS = 0.05
+
+
+def output_is_on(value: ScalarValue | None) -> bool:
+    """On for an on/off output; for a level (a dimmer), anything above zero."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value > 0
+    return bool(value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -468,6 +479,37 @@ class EpsnetDataCoordinator(
         """Write a one-shot boolean command variable."""
         LOGGER.debug("EPSNET command press requested: %s", command_name)
         await self.client.set_value(self.catalog.entries_by_name[command_name], True)
+
+    async def async_switch_by_press(
+        self, state_name: str, press_name: str, on: bool
+    ) -> ScalarValue | None:
+        """Bring an output to ``on`` by a press of its front button.
+
+        A press flips the output, so the output is read first: already as
+        wanted, nothing is pressed. After a press the output is read until it
+        changed. Returns its value then, or ``None`` when it did not change in
+        time (the PLC program does not act on that button).
+        """
+        entry = self.catalog.entries_by_name[state_name]
+        formula = self._formula_for(state_name)
+
+        async def _read() -> ScalarValue:
+            raw = (await self.client.get_values((entry,)))[state_name]
+            return self._apply_formula(raw, formula)
+
+        value = await _read()
+        if output_is_on(value) == on:
+            return value
+        LOGGER.debug("EPSNET press requested: %s to switch %s", press_name, state_name)
+        await self.client.set_value(self.catalog.entries_by_name[press_name], True)
+        deadline = monotonic() + PRESS_CONFIRM_SECONDS
+        while True:
+            await asyncio.sleep(PRESS_POLL_SECONDS)
+            value = await _read()
+            if output_is_on(value) == on:
+                return value
+            if monotonic() >= deadline:
+                return None
 
     async def async_set_scalar(self, command_name: str, value: float | int | str) -> None:
         """Write a scalar value variable."""

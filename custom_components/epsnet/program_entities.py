@@ -4,9 +4,10 @@ Every module channel gets an address from the program (see program_layout) and
 a meaning from the module's descriptor (its data items in conversion-code
 order). Entities are keyed by hardware identity, never by X/Y address:
 ``<master rack>_<master slot>_<hw code>_<serial>_<channel>``. Outputs are
-read-only here: the PLC program rewrites Y every cycle, so they are shown, not
-switched. A variable map names them by address: a channel takes the name of the
-map variable sitting exactly where it does.
+only shown here: the PLC program rewrites Y every cycle, so an output cannot be
+written. (The catalog adds what can be done without command variables: a press
+of a button's input.) A variable map names them by address: a channel takes the
+name of the map variable sitting exactly where it does.
 """
 
 from __future__ import annotations
@@ -53,6 +54,20 @@ _ROLES: dict[str, tuple[str, str | None, str | None, bool]] = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class PlacedChannel:
+    """One channel of a module with the place the program gives it."""
+
+    key: str  # hardware identity, as an entity of the channel would be keyed
+    module: str  # the same for all channels of one module
+    role: str
+    label: str
+    register: str
+    address: int
+    bit: int | None
+    device_key: str
+
+
 @dataclass(slots=True)
 class ProgramEntities:
     entries: dict[str, PubEntry] = field(default_factory=dict)
@@ -60,6 +75,8 @@ class ProgramEntities:
     devices: dict[str, DetectedDevice] = field(default_factory=dict)
     report: list[dict[str, object]] = field(default_factory=list)
     named: int = 0  # channels that took a map variable's name
+    # every placed channel, also those a map entity shows
+    channels: list[PlacedChannel] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -355,10 +372,22 @@ def _add_device(result, master: ProgramMaster, line: ProgramDevice, pairs,
         for definition, item in pairs_:
             for channel in definition.channels:
                 storage, data_type, address, bit, transform = _entry_for(channel, item)
+                key = f"{PROGRAM_ENTITY_PREFIX}{stem}_{channel.key}"
+                result.channels.append(
+                    PlacedChannel(
+                        key=key,
+                        module=stem,
+                        role=channel.role,
+                        label=channel.label,
+                        register=item.zone,
+                        address=address,
+                        bit=bit,
+                        device_key=device_key,
+                    )
+                )
                 if (item.zone, address, bit) in covered:
                     continue
                 platform, device_class, unit, diagnostic = _ROLES[channel.role]
-                key = f"{PROGRAM_ENTITY_PREFIX}{stem}_{channel.key}"
                 named = _map_name(names, item.zone, address, bit, data_type)
                 if named is not None:
                     result.named += 1

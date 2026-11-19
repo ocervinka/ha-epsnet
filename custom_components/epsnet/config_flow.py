@@ -4,7 +4,7 @@ Setup asks as little as it can. It searches the local network for PLCs and lets
 the user pick one (an address is typed only when none answers), then scans the
 modules and reads the variable names under a progress step and creates the
 entry. Further questions appear only when the PLC cannot answer them itself: it
-stores no .pub (upload one, or continue read-only), another program holds its
+stores no .pub (upload one, or continue without it), another program holds its
 connection (retry, or upload), or an uploaded file names none of its modules.
 
 The resolved variable map is frozen into the entry so runtime never re-fetches
@@ -208,9 +208,12 @@ def _file_names_a_module(result: SetupResult) -> bool:
 
 
 def _map_can_switch(result: SetupResult) -> bool:
-    """True when the map has command variables: something can be switched."""
+    """True when the map has command variables: something is switched directly.
+
+    Not an output switched by a press of its front button: that needs no map.
+    """
     return any(
-        entity.platform in ("light", "switch")
+        entity.platform in ("light", "switch") and entity.press_name is None
         for entity in _module_entities_of_the_map(result)
     )
 
@@ -545,7 +548,7 @@ class EpsnetConfigFlow(ProgressSteps, config_entries.ConfigFlow, domain=DOMAIN):
         self._modules = _module_count(result)
         if not result.address_count:
             # No names: the modules' inputs and outputs can still be shown
-            # read-only from the PLC program. Ask for the .pub, or go on without.
+            # from the PLC program, without names. Ask for the .pub, or go on without.
             return self.async_show_progress_done(next_step_id="no_map")
         if self._preset_entries is not None and not _file_names_a_module(result):
             return self.async_show_progress_done(next_step_id="file_no_match")
@@ -581,7 +584,7 @@ class EpsnetConfigFlow(ProgressSteps, config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_no_map(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """The PLC stores no .pub: upload one, or continue read-only."""
+        """The PLC stores no .pub: upload one, or continue without it."""
         if self._result is None:
             return await self.async_step_run()
         return self.async_show_menu(
@@ -688,6 +691,7 @@ class EpsnetConfigFlow(ProgressSteps, config_entries.ConfigFlow, domain=DOMAIN):
             "named": str(
                 sum(
                     entity.platform in ("binary_sensor", "sensor")
+                    or entity.press_name is not None
                     for entity in _module_entities_of_the_map(result)
                 )
                 + result.catalog.channels_named_by_map
