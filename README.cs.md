@@ -191,13 +191,14 @@ zveřejňovat. Proměnné typu čas, datum a text entity nemají.
 
 Nastavení může pokračovat i bez mapy. Integrace pak přečte konfiguraci I/O, která je součástí
 programu PLC (který modul leží kde v paměti PLC), a vytvoří entitu pro každý vstup a výstup
-podporovaných modulů CIB: tlačítka, vstupy, teploty, stavy relé a LED, úrovně stmívačů. Entity
+podporovaných modulů CIB: tlačítka, vstupy, teploty, relé, LED a výstupy stmívačů. Entity
 se jmenují podle typu modulu a adresy na sběrnici (např. *WSB2-40 1A2B Temperature*). Co Home
 Assistant dokáže ovládat bez povelových proměnných programu, závisí na programu (viz „Ovládání
 bez povelových proměnných“ výše). Když soubor `.pub`
 doplníte později, tyto entity zůstanou (stejná ID, historie i automatizace), dostanou názvy
-z vašeho programu a přibudou světla a spínače, pro které má program povelové proměnné. Výstup,
-který je dostane, pak vedle svého světla nebo spínače ukazuje senzor a přímo se už neovládá. Moduly na interní sběrnici CPU (ne CIB) zahrnuté
+z vašeho programu a přibudou světla a spínače, pro které má program povelové proměnné. Výjimkou je
+výstup, který je dostane: jeho vlastní spínač nebo světlo nahradí senzor vedle nového světla nebo
+spínače, takže automatizace, které používaly ten původní, je potřeba přepsat na novou entitu. Moduly na interní sběrnici CPU (ne CIB) zahrnuté
 nejsou.
 
 S mapou integrace přidá i kanály, které žádná z entit mapy nezobrazuje (např. sabotážní kontakty,

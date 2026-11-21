@@ -208,9 +208,9 @@ def _file_names_a_module(result: SetupResult) -> bool:
 
 
 def _map_can_switch(result: SetupResult) -> bool:
-    """True when the map has command variables: something is switched directly.
+    """True when the map has command variables: the program switches something.
 
-    Not an output switched itself (by its front button or a written value):
+    Not an output acted on itself (by its front button or a written value):
     that needs no map.
     """
     return any(

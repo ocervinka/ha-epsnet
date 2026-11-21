@@ -163,10 +163,11 @@ def _async_remove_stale_program_entities(hass, entry, catalog: EntityCatalog) ->
 def _async_remove_replaced_entities(hass, entry, catalog: EntityCatalog) -> None:
     """Drop registry entries of entities that are now of another kind.
 
-    An output shown by a binary sensor becomes a switch when it can be
-    switched (by its front button, or once the map has command variables).
-    The entity keeps its identity but not its kind, so the old one would stay
-    behind as "no longer provided".
+    An output without command variables is a switch or a light that acts on
+    the output itself, where earlier versions showed a sensor; with command
+    variables in the map it is a sensor again, beside the light or switch they
+    give. The entity keeps its identity but not its kind, so the old one would
+    stay behind as "no longer provided".
     """
     from homeassistant.helpers import entity_registry as er
 

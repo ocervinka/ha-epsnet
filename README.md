@@ -204,13 +204,14 @@ and text variables get no entity.
 
 Without a map, setup can still continue: the integration reads the I/O configuration compiled into
 the PLC program (which module sits where in the PLC's memory) and creates an entity for every input
-and output of the supported CIB modules — buttons, inputs, temperatures, relay and LED states,
-dimmer levels. They are named by module type and bus address (e.g. *WSB2-40 1A2B Temperature*).
+and output of the supported CIB modules — buttons, inputs, temperatures, relays, LEDs and
+dimmer outputs. They are named by module type and bus address (e.g. *WSB2-40 1A2B Temperature*).
 What Home Assistant can control without the program's command variables depends on the program
-(see "Control without command variables" above). Adding the `.pub` later keeps those entities (same entity IDs, history and
-automations), gives them the names from your program and adds the lights and switches the program
-has command variables for; an output that gets them is then shown by a sensor beside its
-light or switch, and no longer controlled itself. Modules on a CPU's internal bus (not
+(see "Control without command variables" above). Adding the `.pub` later keeps those entities
+(same entity IDs, history and automations), gives them the names from your program and adds the
+lights and switches the program has command variables for. An output that gets them is the
+exception: its own switch or light is replaced by a sensor beside the new light or switch, so
+automations that used the old one need the new entity. Modules on a CPU's internal bus (not
 CIB) are not covered.
 
 With a map, the channels none of its entities shows (e.g. tamper contacts, status flags, the

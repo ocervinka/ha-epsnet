@@ -152,7 +152,7 @@ class ProgramWatcher:
         from homeassistant.helpers import issue_registry as ir
 
         LOGGER.info("PLC program changed (checksum %#010x); re-reading its I/O layout", self.baseline or 0)
-        if any(e.from_program or e.press_name for e in self.catalog.entities):
+        if any(e.from_program or e.press_name or e.direct_output for e in self.catalog.entities):
             self._set_stale(True)
         value = await self._wait_until_stable()
         if value is not None:

@@ -4,10 +4,10 @@ Every module channel gets an address from the program (see program_layout) and
 a meaning from the module's descriptor (its data items in conversion-code
 order). Entities are keyed by hardware identity, never by X/Y address:
 ``<master rack>_<master slot>_<hw code>_<serial>_<channel>``. Outputs are
-only shown here: the PLC program rewrites Y every cycle, so an output cannot be
-written. (The catalog adds what can be done without command variables: a press
-of a button's input.) A variable map names them by address: a channel takes the
-name of the map variable sitting exactly where it does.
+only shown here. (The catalog turns an output without command variables into a
+switch or a light that acts on the output itself, and adds the presses of
+buttons.) A variable map names them by address: a channel takes the name of
+the map variable sitting exactly where it does.
 """
 
 from __future__ import annotations
