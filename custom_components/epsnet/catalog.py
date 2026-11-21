@@ -684,6 +684,26 @@ def _match_runtime_inventory(
 # Roles of variables that sit in the X/Y images (a module's inputs and outputs).
 _IMAGE_ROLES = ("x_bool", "x_real", "y_bool_state", "y_real_state")
 
+# A module's inputs lie next to each other in X, and its outputs in Y: 13 bytes
+# in the largest module seen. Variables that share a name prefix but lie
+# further apart than this are not one module's.
+_MODULE_IMAGE_SPAN_MAX = 64
+
+
+def _spread_wider_than_a_module(
+    raw_roles_by_stem: dict[str, dict[str, list[PubEntry]]], stems: tuple[str, ...]
+) -> bool:
+    for roles in (("x_bool", "x_real"), ("y_bool_state", "y_real_state")):
+        addresses = [
+            entry.address
+            for stem in stems
+            for role in roles
+            for entry in raw_roles_by_stem[stem].get(role, ())
+        ]
+        if addresses and max(addresses) - min(addresses) >= _MODULE_IMAGE_SPAN_MAX:
+            return True
+    return False
+
 
 def _shared_prefix_length(stem: str, other: str) -> int:
     for prefix in reversed(_underscore_prefixes(stem)):
@@ -716,6 +736,8 @@ def _place_stems(
         if hits:
             placed[stem] = min(hits, key=lambda index: (-hits[index], index))
     for candidate in candidates:
+        if _spread_wider_than_a_module(raw_roles_by_stem, candidate.raw_stems):
+            continue  # a shared prefix, not a module: each variable for itself
         anchors = sorted(stem for stem in candidate.raw_stems if stem in placed)
         if not anchors:
             continue
@@ -728,6 +750,24 @@ def _place_stems(
             )
             placed[stem] = placed[nearest]
     return placed
+
+
+def _could_lie_in(image_bytes, roles: dict[str, list[PubEntry]]) -> bool:
+    """False for a variable in X or Y that lies far from the module's own bytes.
+
+    Such a variable is not the module's, whatever it is called. (One close by
+    can be: the layout does not place every byte of every module.)
+    """
+    for role in _IMAGE_ROLES:
+        for entry in roles.get(role, ()):
+            distances = [
+                abs(address - entry.address)
+                for register, address in image_bytes
+                if register == entry.register
+            ]
+            if not distances or min(distances) >= _MODULE_IMAGE_SPAN_MAX:
+                return False
+    return True
 
 
 def _device_prefix(stems: tuple[str, ...]) -> str | None:
@@ -810,7 +850,9 @@ def _resolve_devices(
         named_like = [
             (-len(prefix), index)
             for index, prefix in prefix_by_place.items()
-            if prefix and stem.startswith(prefix)
+            if prefix
+            and stem.startswith(prefix)
+            and _could_lie_in(places[index].image_bytes, raw_roles_by_stem[stem])
         ]
         if named_like:
             index = min(named_like)[1]
@@ -853,6 +895,8 @@ def _resolve_devices(
     stems_by_name_key: dict[str, list[tuple[tuple[str, ...], str]]] = defaultdict(list)
     for candidate in candidates:
         if any(stem in placed for stem in candidate.raw_stems):
+            continue
+        if _spread_wider_than_a_module(raw_roles_by_stem, candidate.raw_stems):
             continue
         prefix = _longest_common_underscore_prefix(candidate.raw_stems) or candidate.prefix
         key = _slugify(prefix[:-1])

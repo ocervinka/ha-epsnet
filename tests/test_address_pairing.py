@@ -283,3 +283,35 @@ def test_free_names_added_to_an_entry_set_up_without_a_map():
     assert entities.keys() == _entities(without_map).keys()
     assert entities["io_0_2_3151_2b3c_relay_re1"].name == "BalconyLamp"
     assert catalog.channels_named_by_map == 3
+
+
+SHARED_PREFIX_FAR_APART = """
+IN_alarm X B 420 .7 BOOL PUB_OUT
+IN_T_boiler X F 85 REAL PUB_OUT
+IN_T_tank X F 91 REAL PUB_OUT
+IN_T_solar X F 95 REAL PUB_OUT
+"""
+
+
+def test_variables_far_apart_are_not_one_module_whatever_prefix_they_share():
+    """A program can call all its inputs IN_...: lying hundreds of bytes apart
+    they are not one module's, so no module is called "IN" and each stays a
+    variable of the program."""
+    for inventory in (_house(), replace(_house(), program_layout=None)):
+        catalog = _catalog(SHARED_PREFIX_FAR_APART, inventory)
+        assert "in" not in catalog.devices_by_key
+        assert not any(d.paired_by == "order" for d in _module_devices(catalog).values())
+        variables = [e for e in catalog.entities if e.variable]
+        assert len(variables) == 4
+        assert {e.device_key for e in variables} == {PROGRAM_VARIABLES_DEVICE_KEY}
+
+
+def test_variables_far_apart_do_not_follow_the_one_a_module_holds():
+    """One of them lies in a module's inputs: it names that input, and the rest
+    do not come along."""
+    catalog = _catalog(SHARED_PREFIX_FAR_APART + "IN_hall X F 5 REAL PUB_OUT\n")
+    wall_switch = [e.key for e in _entities(catalog).values() if not e.from_program]
+    assert wall_switch == ["in_hall"]
+    assert _entities(catalog)["in_hall"].device_key in _module_devices(catalog)
+    assert sorted(e.name for e in catalog.entities if e.variable) == [
+        "IN_T_boiler", "IN_T_solar", "IN_T_tank", "IN_alarm"]
