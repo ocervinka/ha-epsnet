@@ -790,6 +790,11 @@ _PROGRAM_TABLES_ENTRY = 7
 _MEMORY_MAP_ENTRIES = 8
 _TABLE_AREA_PROBES = 3  # tables checked before a memory area counts as the table area
 _PROGRAM_RECORDS_WINDOW = 0x200  # image offset of the block that holds the bus records
+# A group record of the PLC's other bus: its slot map (0x7f = no unit) follows
+# the group header and an 8-byte sub-header.
+_OTHER_GROUP_SLOT_MAP = slice(0x1C, 0x2C)
+_OTHER_GROUP_MAX_LENGTH = 0x400
+_EMPTY_SLOT = 0x7F
 
 
 class _SessionProgramSource:
@@ -1570,6 +1575,9 @@ class EpsnetUdpClient:
                 group_token = group_record.token
                 meta = group_record.meta
                 if meta != _DISCOVERY_GROUP_META:
+                    # Units on the PLC's other bus (the CPU's own parts and
+                    # expansion modules). Not used yet: kept for the diagnostics.
+                    raw_reads.extend(self._read_other_bus_group_on_socket(sock, group_record))
                     continue
 
                 if cib_bus_idx < len(tmodule1_cib_records):
@@ -1665,6 +1673,30 @@ class EpsnetUdpClient:
             raw_reads=tuple(raw_reads),
             program_layout=program_layout,
         )
+
+    def _read_other_bus_group_on_socket(
+        self, sock: socket.socket, record: RuntimeDiscoveryRecord
+    ) -> list[tuple[str, str]]:
+        """A group record that is not a CIB bus, as raw bytes for the diagnostics.
+
+        The first block shows whether the group has any unit; the rest of the
+        record (types, child records, unit names) is read only when it does.
+        A refused read is noted and does not stop the scan.
+        """
+        label = f"other_group_{record.token:08x}"
+        length = min(record.meta, _OTHER_GROUP_MAX_LENGTH)
+        try:
+            data = self._read_discovery_block_on_socket(
+                sock, token=record.token, length=min(length, _DISCOVERY_MAX_READ_LENGTH)
+            )
+            slots = data[_OTHER_GROUP_SLOT_MAP]
+            if len(data) < length and any(slot != _EMPTY_SLOT for slot in slots):
+                data += self._read_discovery_block_on_socket(
+                    sock, token=record.token + len(data), length=length - len(data)
+                )
+        except EpsnetProtocolError as err:
+            return [(label, f"read refused: {err}")]
+        return [(label, data.hex())]
 
     @staticmethod
     def _check_table_area(read, token: int, offsets: list[int], limit: int) -> str | None:

@@ -584,6 +584,11 @@ async def test_epsnet_udp_client_discovers_runtime_inventory() -> None:
     ) + b"\x00CIB I/O BUS\x00"
     group_header_1 = bytes.fromhex("0d43494220492f4f204255530000000000000004")
     group_header_2 = bytes.fromhex("0843494220492f4f204255530000000000000004")
+    # the group of the PLC's other bus (0x025e bytes), with one unit in slot 0
+    other_group = bytearray(0x025E)
+    other_group[0x1C:0x2C] = bytes([0] + [0x7F] * 15)
+    other_group[0xDE:0xEC] = b"EXPANSION UNIT"
+    other_group = bytes(other_group)
 
     slot_map = bytes([0, 1, 2, 3, 4] + [0x7F] * 27)
     type_codes = b"".join(
@@ -663,6 +668,9 @@ async def test_epsnet_udp_client_discovers_runtime_inventory() -> None:
             _read_response(2, root_body), # ROOT
             _read_response(3, bytes(0x20) + b"\x13\x01\x00\x02\x10\x01\x0a\x00\x02\x00\xb0\x1d\x00\x00\xb0\x3d\x00\x00\x28\x00"), # TmodulE1
             _read_response(4, group_table_body), # GROUP TABLE
+            _read_response(4, other_group[:0xF0]),  # the other bus: has a unit, so all of it
+            _read_response(4, other_group[0xF0:0x1E0]),
+            _read_response(4, other_group[0x1E0:]),
             _read_response(5, group_header_1),
             _read_response(6, first_chunk_1),
             _read_response(7, second_chunk_1),
@@ -701,6 +709,8 @@ async def test_epsnet_udp_client_discovers_runtime_inventory() -> None:
         (0x4001093C, 0x0056),
     ]
     assert [group.token for group in inventory.groups] == [0x40015382, 0x40015820]
+    # the other bus's group is kept whole for the diagnostics
+    assert dict(inventory.raw_reads)["other_group_40010992"] == other_group.hex()
     assert inventory.groups[0].occupied_slot_count == 5
     assert inventory.groups[1].occupied_slot_count == 0
     assert [device.model for device in inventory.devices] == [
@@ -746,6 +756,39 @@ async def test_epsnet_udp_client_discovers_runtime_inventory() -> None:
     assert _build_discovery_parameter_read(240, 0x400F0200) in critical_requests[2]
     # GROUP TABLE
     assert _build_discovery_parameter_read(0x7A, 0x4001093C) in critical_requests[3]
+
+
+def _other_group_reads(memory: bytes | None):
+    """The reads of one other-bus group record of 0x025e bytes at 0x40010992."""
+    from custom_components.epsnet.epsnet_udp import EpsnetProtocolError
+    from custom_components.epsnet.models import RuntimeDiscoveryRecord
+
+    client = EpsnetUdpClient("127.0.0.1", 1, local_port=0)
+    reads: list[tuple[int, int]] = []
+
+    def read(_sock, *, token, length):
+        reads.append((token - 0x40010992, length))
+        if memory is None:
+            raise EpsnetProtocolError("refused")
+        return memory[token - 0x40010992 : token - 0x40010992 + length]
+
+    client._read_discovery_block_on_socket = read  # type: ignore[method-assign]
+    kept = client._read_other_bus_group_on_socket(None, RuntimeDiscoveryRecord(0x40010992, 0x025E))
+    return kept, reads
+
+
+def test_an_empty_group_of_the_other_bus_costs_one_read() -> None:
+    empty = bytearray(0x025E)
+    empty[0x1C:0x2C] = bytes([0x7F] * 16)
+    kept, reads = _other_group_reads(bytes(empty))
+    assert reads == [(0, 0xF0)]
+    assert kept == [("other_group_40010992", bytes(empty[:0xF0]).hex())]
+
+
+def test_a_refused_group_of_the_other_bus_is_noted_and_the_scan_goes_on() -> None:
+    kept, reads = _other_group_reads(None)
+    assert reads == [(0, 0xF0)]
+    assert kept == [("other_group_40010992", "read refused: refused")]
 
 
 @pytest.mark.asyncio

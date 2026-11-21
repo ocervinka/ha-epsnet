@@ -16,6 +16,7 @@ from custom_components.epsnet.program_layout import (
 )
 
 MASTER, DEVICE = 0xC0, 0x80
+CPU_RECORD = 0x0101  # a program's first bus record is the CPU's own
 WALL_SWITCH, RELAY, DIMMER, SENSOR_IF = 3126, 3151, 3101, 3309
 
 
@@ -24,7 +25,8 @@ def _master(rack=0, slot=2, iin=0, iout=0x01000000, lines=(), conv_in=b"", conv_
                 conv_in=conv_in, conv_out=conv_out)
 
 
-def build_program(masters, *, records_at=0x206, spare_records=0, others=(), corrupt_table=None):
+def build_program(masters, *, records_at=0x206, spare_records=0, others=(), corrupt_table=None,
+                  other_table=None):
     """A program image + table area in the documented formats."""
     tables: list[bytes] = [b"\x01\x02"]
 
@@ -47,7 +49,8 @@ def build_program(masters, *, records_at=0x206, spare_records=0, others=(), corr
         records += struct.pack("<BBBBHHHIIH", 0x13, 1, m["rack"], m["slot"], 0x0110,
                                10, 2, 7600 + 16 * index, 0x2000 + 7600 + 16 * index, table)
     for logical in others:
-        records += struct.pack("<BBBBHHHIIH", 0x13, 1, 0, 0, logical, 10, 2, 7500, 0x2000 + 7500, 0)
+        table = add(other_table) if other_table is not None else 0
+        records += struct.pack("<BBBBHHHIIH", 0x13, 1, 0, 0, logical, 10, 2, 7500, 0x2000 + 7500, table)
 
     area = bytearray(b"\x00\x00")
     offsets = []
@@ -169,6 +172,29 @@ def test_two_masters_and_other_records():
     assert [r.logical_address for r in layout.other_records] == [0x0101, 0x07E1]
 
 
+EXPANSION_MODULE = 0x0000  # a record of a module on the PLC's other bus
+
+
+@pytest.mark.parametrize("header", [True, False])
+def test_other_modules_settings_tables_are_kept_for_the_diagnostics(header):
+    settings = bytes(range(1, 31))
+    program = build_program([HOUSE], others=(CPU_RECORD, EXPANSION_MODULE), other_table=settings)
+    layout = decode_program_layout(BytesProgramSource(*program), header=header)
+    assert layout.error is None and len(layout.items) == 10
+    assert [(r.init_table > 0, r.table, r.table_note) for r in layout.other_records] == [
+        (True, settings, None)] * 2
+    assert layout_snapshot(layout)["other_records"][1]["table"] == settings.hex()
+
+
+@pytest.mark.parametrize("header", [True, False])
+def test_a_long_table_of_another_module_is_left_out(header):
+    program = build_program([HOUSE], others=(CPU_RECORD, EXPANSION_MODULE), other_table=bytes(0x500))
+    layout = decode_program_layout(BytesProgramSource(*program), header=header)
+    assert len(layout.items) == 10
+    record = layout.other_records[1]
+    assert record.table == b"" and "longer than 1024 bytes" in record.table_note
+
+
 def test_bad_table_checksum_is_reported_not_guessed():
     image, tables = build_program([HOUSE])
     master_table = _decode((image, tables)).masters[0].init_table
@@ -264,9 +290,6 @@ def test_an_unknown_program_image_leaves_what_the_memory_areas_start_with():
         "0x07050000: read refused: unmapped",
     )
     assert layout_snapshot(layout)["notes"] == list(layout.notes)
-
-
-CPU_RECORD = 0x0101  # a program's first bus record is the CPU's own
 
 
 @pytest.mark.parametrize("records_at", [0x206, 0x20E])

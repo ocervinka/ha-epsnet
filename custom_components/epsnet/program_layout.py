@@ -14,7 +14,7 @@ explicit "unsupported" result with the reason, never a guess.
 from __future__ import annotations
 
 import struct
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Protocol
 
 # Program image header (big-endian 16-bit words at these offsets)
@@ -143,6 +143,10 @@ class ProgramRecord:
     logical_address: int
     status_in: tuple[int, int]
     status_out: tuple[int, int]
+    # the module's settings table, as it is: what says which module this is
+    init_table: int = 0
+    table: bytes = b""
+    table_note: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -296,10 +300,12 @@ class _Program:
         """Where table ``number`` sits in the table area (once it is known)."""
         return self.table_offsets[number] if 0 <= number < len(self.table_offsets) else None
 
-    def table(self, number: int) -> bytes:
+    def table(self, number: int, *, limit: int | None = None) -> bytes:
         if number >= 0:
             self._follow_to(number)
         if number in self._tables:
+            if limit is not None and len(self._tables[number]) > limit:
+                raise ProgramLayoutError(f"table {number} is longer than {limit} bytes")
             return self._tables[number]
         if not 0 <= number < len(self.table_offsets):
             if self._follow_stopped:
@@ -314,6 +320,8 @@ class _Program:
         length = _be16(self.source.tables(offset, 2), 0)
         if offset + 4 + length > self.table_area_len:
             raise ProgramLayoutError(f"table {number} longer than the table area")
+        if limit is not None and length > limit:
+            raise ProgramLayoutError(f"table {number} is longer than {limit} bytes")
         body = self.source.tables(offset + 2, length + 2)
         data, check = body[:length], _be16(body, length)
         if check != table_checksum(length, data):
@@ -503,9 +511,26 @@ def decode_program_layout(source: ProgramSource, *, header: bool = True) -> Prog
             masters.append(_decode_master(program, record, init))
         else:
             others.append(
-                ProgramRecord(rack, slot, logical, (off_in, len_in), (off_out, len_out))
+                ProgramRecord(
+                    rack, slot, logical, (off_in, len_in), (off_out, len_out), init_table=init
+                )
             )
+    # Last, so a table that cannot be read costs the CIB masters nothing.
+    others = [_with_table(program, record) for record in others]
     return ProgramIoLayout(masters=tuple(masters), other_records=tuple(others))
+
+
+_RECORD_TABLE_MAX = 0x400  # a module's settings; anything longer is not read for the diagnostics
+
+
+def _with_table(program: _Program, record: ProgramRecord) -> ProgramRecord:
+    """The record with its settings table read (for the diagnostics only)."""
+    if not record.init_table:
+        return record
+    try:
+        return replace(record, table=program.table(record.init_table, limit=_RECORD_TABLE_MAX))
+    except ProgramLayoutError as err:
+        return replace(record, table_note=str(err))
 
 
 class BytesProgramSource:
@@ -619,6 +644,9 @@ def layout_snapshot(layout: ProgramIoLayout) -> dict[str, object]:
                 "logical_address": f"0x{r.logical_address:04x}",
                 "status_in": list(r.status_in),
                 "status_out": list(r.status_out),
+                "init_table": r.init_table,
+                "table": r.table.hex(),
+                "table_note": r.table_note,
             }
             for r in layout.other_records
         ],
