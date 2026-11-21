@@ -789,6 +789,7 @@ _PROGRAM_IMAGE_ENTRY = 0  # memory-map entries seen on the PLCs tested so far
 _PROGRAM_TABLES_ENTRY = 7
 _MEMORY_MAP_ENTRIES = 8
 _TABLE_AREA_PROBES = 3  # tables checked before a memory area counts as the table area
+_PROGRAM_RECORDS_WINDOW = 0x200  # image offset of the block that holds the bus records
 
 
 class _SessionProgramSource:
@@ -1780,11 +1781,14 @@ class EpsnetUdpClient:
         """
         image_reads: dict[int, bytes] = {}
         first: ProgramIoLayout | None = None
+        readable_from: str | None = None
         for table_address in table_tokens:
             source = _HeaderlessProgramSource(read, image_address, table_address, image_reads)
             layout = decode_program_layout(source, header=False)
             if layout.error and not layout.masters and not layout.other_records:
                 return None  # no records: not a program
+            if readable_from is None:
+                readable_from = EpsnetUdpClient._first_readable(read, image_address)
             layout = replace(
                 layout,
                 image_address=image_address,
@@ -1793,6 +1797,7 @@ class EpsnetUdpClient:
                 notes=(
                     f"{image_address:#010x}: the program header is not readable; "
                     "bus records and tables found by their structure",
+                    readable_from,
                 )
                 + layout.notes,
             )
@@ -1800,6 +1805,26 @@ class EpsnetUdpClient:
                 return layout
             first = first or layout
         return first
+
+    @staticmethod
+    def _first_readable(read, image_address: int) -> str:
+        """For the diagnostics: where a program that hides its start becomes readable.
+
+        Its first bytes are refused and the bus records' block is not; five
+        short reads between the two find the place to 16 bytes.
+        """
+        refused, readable, sample = 0, _PROGRAM_RECORDS_WINDOW, b""
+        while readable - refused > 0x10:
+            middle = (refused + readable) // 2 & ~0x0F
+            try:
+                sample = read(image_address + middle, 0x10)
+                readable = middle
+            except EpsnetProtocolError:
+                refused = middle
+        note = f"{image_address:#010x}: readable from +{readable:#x}"
+        if readable < _PROGRAM_RECORDS_WINDOW:
+            note += f", which starts with {sample.hex()}"
+        return note
 
     def _read_point_values_blocking_on_socket(
         self,

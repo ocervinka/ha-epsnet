@@ -292,14 +292,16 @@ def test_without_the_header_something_else_is_not_taken_for_a_program():
     assert layout.error == "no bus-master records where a program keeps them"
 
 
-def _client_refusing_the_program_header(image: bytes, tables: bytes) -> EpsnetUdpClient:
-    """A PLC that hands out its program except the first 0x200 bytes, and refuses
-    a read that runs past the end of the table area."""
+def _client_refusing_the_program_header(
+    image: bytes, tables: bytes, hidden: int = 0x200
+) -> EpsnetUdpClient:
+    """A PLC that hands out its program except the first ``hidden`` bytes, and
+    refuses a read that runs past the end of the table area."""
     client = EpsnetUdpClient("127.0.0.1", 1, local_port=0)
     refused: list[tuple[int, int]] = []
 
     def read(_sock, *, token, length):
-        if IMAGE_AT + 0x200 <= token and token + length <= IMAGE_AT + len(image):
+        if IMAGE_AT + hidden <= token and token + length <= IMAGE_AT + len(image):
             return image[token - IMAGE_AT : token - IMAGE_AT + length]
         if TABLES_AT <= token and token + length <= TABLES_AT + len(tables):
             return tables[token - TABLES_AT : token - TABLES_AT + length]
@@ -326,11 +328,26 @@ def test_session_reader_reads_a_program_whose_header_the_plc_refuses():
     # everything read is kept for the diagnostics
     assert layout.reads["tables"][0] == tables
     assert layout.reads["image"][0x200] == image[0x200:0x2F0]
-    # of the program only its header was asked for in vain, and the table
-    # area's end was found with one read too far
+    # asked in vain: the header, five short reads that look for where the
+    # program becomes readable, and one read past the end of the table area
     in_program = [t for t, _ in client.refused if IMAGE_AT <= t < IMAGE_AT + len(image)]
     in_tables = [t for t, _ in client.refused if TABLES_AT <= t <= TABLES_AT + len(tables)]
-    assert in_program == [IMAGE_AT] and len(in_tables) <= 1
+    assert in_program[0] == IMAGE_AT and len(in_program) == 6 and len(in_tables) <= 1
+    assert "0x400f0000: readable from +0x200" in layout.notes
+
+
+@pytest.mark.parametrize("hidden", [0x10, 0x30, 0x40, 0x130, 0x1F0])
+def test_session_reader_notes_where_a_hidden_program_start_ends(hidden):
+    image, tables = build_program([HOUSE], records_at=0x20E, others=(CPU_RECORD,))
+    image = bytes(range(256)) * 2 + image[0x200:] + bytes(0x200)
+    client = _client_refusing_the_program_header(image, tables, hidden)
+    layout = client._read_program_layout_on_socket(None, (IMAGE_AT, TABLES_AT))
+    assert layout.error is None and len(layout.items) == 10
+    (note,) = [n for n in layout.notes if "readable from" in n]
+    assert note == (
+        f"0x400f0000: readable from +{hidden:#x}, "
+        f"which starts with {image[hidden:hidden + 0x10].hex()}"
+    )
 
 
 def test_session_reader_says_what_it_found_when_the_tables_cannot_be_followed():
