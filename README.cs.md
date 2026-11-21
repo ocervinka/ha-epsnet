@@ -23,8 +23,8 @@ v upozornění v **Opravách**, takže víte, co chybí.
   přiřadí k modulům podle adresy (proměnná patří modulu, jehož vstupem nebo výstupem je), takže
   názvy nemusí mít žádný předepsaný tvar
 - mapu publikovaných proměnných (soubor `.pub` k programu) načte přímo z PLC, nebo z nahraného souboru
-- bez mapy zobrazí stavy všech vstupů a výstupů podporovaných modulů CIB podle konfigurace I/O
-  uložené přímo v programu PLC
+- bez mapy vytvoří entity pro všechny vstupy a výstupy podporovaných modulů CIB podle konfigurace
+  I/O uložené přímo v programu PLC
 - ovládání bez povelových proměnných: tlačítka nástěnných ovladačů lze stisknout z Home Assistantu
   a relé, výstupy stmívačů a signalizační LED ovládat tlačítky přímo na modulech nebo zápisem
   přímo do výstupu
