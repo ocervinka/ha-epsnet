@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import EntityCategory
@@ -10,6 +11,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .models import EntitySpec, ScalarValue
+
+LOGGER = logging.getLogger(__name__)
 
 
 class EpsnetEntity(CoordinatorEntity):
@@ -64,6 +67,13 @@ class EpsnetEntity(CoordinatorEntity):
     def _output_kept_its_value(self, value: ScalarValue | None, *, pressed: bool) -> None:
         """Show what the output holds now, or fail when it is not as wanted."""
         if value is None:
+            LOGGER.warning(
+                "%s is not as wanted after %s: the PLC program controls this output itself",
+                self._full_name(),
+                "a press of its front button and a value written into it"
+                if pressed
+                else "a value written into it",
+            )
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
                 translation_key=(

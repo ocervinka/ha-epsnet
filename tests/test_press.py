@@ -235,7 +235,7 @@ async def test_switch_writes_the_output_when_the_front_button_changes_nothing(
 
 
 async def test_switch_reports_a_program_that_controls_the_output_itself(
-    hass: HomeAssistant, _fast_confirm
+    hass: HomeAssistant, _fast_confirm, caplog
 ) -> None:
     plc = _Plc(front_buttons=False, assigns_outputs=True)
     with _patch_plc_with_a_program_layout(), _patch_plc(plc):
@@ -247,6 +247,11 @@ async def test_switch_reports_a_program_that_controls_the_output_itself(
         assert raised.value.translation_placeholders == {"name": "SA2-012M 2B3C RE5"}
         assert plc.written == [(("X", 9, 4), True), (("Y", 1, 4), True)]
         assert hass.states.get(relay).state == "off"
+        # the failure is also in the log, where one made from the UI can be found later
+        assert (
+            "SA2-012M 2B3C RE5 is not as wanted after a press of its front button and a "
+            "value written into it: the PLC program controls this output itself"
+        ) in caplog.text
         await hass.config_entries.async_unload(entry.entry_id)
 
 
