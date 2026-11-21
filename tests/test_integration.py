@@ -708,6 +708,47 @@ async def test_reimport_from_a_file_of_another_project_keeps_the_map(
     assert entry.data["map"] == old_map
 
 
+async def test_reimport_of_a_file_with_only_some_of_the_names_in_use_is_taken(
+    hass: HomeAssistant, tmp_path
+) -> None:
+    """Lines left out of the same project's file: not "another project", even
+    when no line that names a module is left."""
+    own = "boiler_setpoint R F 200 REAL PUB_INOUT\n"
+
+    async def _fetch(*_a, **_k):
+        await asyncio.sleep(0)
+        return ("SIM PLC", SYNTH_ENTRIES + parse_pub_text(own))
+
+    with _patch_client(AsyncMock()), patch(
+        f"{_CLIENT}.async_fetch_pub_from_plc", AsyncMock(side_effect=_fetch)
+    ):
+        await _run_discover_flow(hass)
+        await hass.async_block_till_done()
+        entry = hass.config_entries.async_entries(DOMAIN)[0]
+        assert len(entry.data["map"]["entries"]) == len(SYNTH_ENTRIES) + 1
+
+        # the same variable at another address is not the same project
+        result = await _open_reimport_file_form(hass)
+        with _patch_upload("boiler_setpoint R F 300 REAL PUB_INOUT\n", tmp_path):
+            result = await hass.config_entries.options.async_configure(
+                result["flow_id"], {"map_file": "0123456789abcdef0123456789abcdef"}
+            )
+        await hass.async_block_till_done()
+        result = await hass.config_entries.options.async_configure(result["flow_id"])
+        assert result["errors"] == {"map_file": "pub_no_match"}
+
+        with _patch_upload(own, tmp_path):
+            result = await hass.config_entries.options.async_configure(
+                result["flow_id"], {"map_file": "0123456789abcdef0123456789abcdef"}
+            )
+        await hass.async_block_till_done()
+        result = await hass.config_entries.options.async_configure(result["flow_id"])
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+
+    assert [e["name"] for e in entry.data["map"]["entries"]] == ["boiler_setpoint"]
+
+
 async def test_only_devices_the_catalog_no_longer_has_can_be_deleted(
     hass: HomeAssistant,
 ) -> None:

@@ -934,12 +934,25 @@ class ReimportSteps(ProgressSteps):
             from_file
             and not _file_names_a_module(self._result)
             and not self._names_in_use_belong_to_no_module()
+            and not self._file_is_a_selection_of_the_names_in_use()
         ):
             # Nothing in the file pairs with a module this PLC has: almost
             # certainly the wrong project. Keep the working map and ask again.
             self._error = "pub_no_match"
             return self.async_show_progress_done(next_step_id="reimport_file")
         return self.async_show_progress_done(next_step_id="reimport_done")
+
+    def _file_is_a_selection_of_the_names_in_use(self) -> bool:
+        """True when every variable of the file is one of the names in use, at
+        the same place: the same project with lines left out, not another one."""
+        in_use = {
+            (e.get("name"), e.get("register"), e.get("address"), e.get("bit"), e.get("data_type"))
+            for e in (self._reimport_config_entry().data.get(CONF_MAP) or {}).get("entries") or ()
+        }
+        entries = self._result.entries
+        return bool(entries) and all(
+            (e.name, e.register, e.address, e.bit, e.data_type) in in_use for e in entries
+        )
 
     def _names_in_use_belong_to_no_module(self) -> bool:
         """True when the entry already runs on a file that names no module.

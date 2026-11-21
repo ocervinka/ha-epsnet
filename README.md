@@ -114,9 +114,11 @@ variables are new, removed or moved.
 The same can be done at any time with **Configure → Reload variable names from the PLC**, or
 **Load variable names from a .pub file** when the PLC stores none or an old version (a program
 loaded with Mosaic). Either way the entry and its entity IDs stay; a repair notice tells you when
-the names actually changed. A file that pairs with none of the PLC's modules is refused, unless
-the names in use pair with none either (you chose to use such a file at setup): then another one,
-for example a shorter file with only the variables you want, replaces it.
+the names actually changed. A file that pairs with none of the PLC's modules is refused as a file
+of another project, with two exceptions. A file made of the current one by deleting lines is
+always accepted: that is how you keep only the variables you want. And when the names in use
+pair with no module either (you chose to use such a file at setup), any other file replaces
+them.
 
 ### The variable map
 
