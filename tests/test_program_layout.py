@@ -266,6 +266,89 @@ def test_an_unknown_program_image_leaves_what_the_memory_areas_start_with():
     assert layout_snapshot(layout)["notes"] == list(layout.notes)
 
 
+CPU_RECORD = 0x0101  # a program's first bus record is the CPU's own
+
+
+@pytest.mark.parametrize("records_at", [0x206, 0x20E])
+def test_a_program_is_read_the_same_without_its_header(records_at):
+    program = build_program([HOUSE, HOUSE], records_at=records_at, others=(CPU_RECORD,))
+    with_header = _decode(program)
+    without = decode_program_layout(BytesProgramSource(*program), header=False)
+    assert with_header.error is None and len(with_header.items) == 20
+    assert (without.masters, without.other_records, without.error) == (
+        with_header.masters, with_header.other_records, None)
+
+
+def test_without_the_header_a_broken_table_area_is_reported_not_guessed():
+    program = build_program([HOUSE], others=(CPU_RECORD,), corrupt_table=2)
+    layout = decode_program_layout(BytesProgramSource(*program), header=False)
+    (master,) = layout.masters
+    assert master.devices == ()
+    assert "fails its checksum" in master.error and "2 tables before it" in master.error
+
+
+def test_without_the_header_something_else_is_not_taken_for_a_program():
+    layout = decode_program_layout(BytesProgramSource(bytes(0x400), bytes(0x100)), header=False)
+    assert layout.error == "no bus-master records where a program keeps them"
+
+
+def _client_refusing_the_program_header(image: bytes, tables: bytes) -> EpsnetUdpClient:
+    """A PLC that hands out its program except the first 0x200 bytes, and refuses
+    a read that runs past the end of the table area."""
+    client = EpsnetUdpClient("127.0.0.1", 1, local_port=0)
+    refused: list[tuple[int, int]] = []
+
+    def read(_sock, *, token, length):
+        if IMAGE_AT + 0x200 <= token and token + length <= IMAGE_AT + len(image):
+            return image[token - IMAGE_AT : token - IMAGE_AT + length]
+        if TABLES_AT <= token and token + length <= TABLES_AT + len(tables):
+            return tables[token - TABLES_AT : token - TABLES_AT + length]
+        refused.append((token, length))
+        raise EpsnetProtocolError("refused")
+
+    client._read_discovery_block_on_socket = read  # type: ignore[method-assign]
+    client.refused = refused  # type: ignore[attr-defined]
+    return client
+
+
+def test_session_reader_reads_a_program_whose_header_the_plc_refuses():
+    image, tables = build_program([HOUSE], records_at=0x20E, others=(CPU_RECORD,))
+    image += bytes(0x200)  # the image goes on after the parts read here
+    client = _client_refusing_the_program_header(image, tables)
+    layout = client._read_program_layout_on_socket(None, (IMAGE_AT, *OTHER, TABLES_AT))
+
+    assert layout.error is None
+    assert (layout.image_address, layout.table_address) == (IMAGE_AT, TABLES_AT)
+    assert len(layout.items) == 10
+    assert layout.items == _decode((image, tables)).items
+    assert layout.notes[0].startswith("0x400f0000: read refused")
+    assert any("header is not readable" in note for note in layout.notes)
+    # everything read is kept for the diagnostics
+    assert layout.reads["tables"][0] == tables
+    assert layout.reads["image"][0x200] == image[0x200:0x2F0]
+    # of the program only its header was asked for in vain, and the table
+    # area's end was found with one read too far
+    in_program = [t for t, _ in client.refused if IMAGE_AT <= t < IMAGE_AT + len(image)]
+    in_tables = [t for t, _ in client.refused if TABLES_AT <= t <= TABLES_AT + len(tables)]
+    assert in_program == [IMAGE_AT] and len(in_tables) <= 1
+
+
+def test_session_reader_says_what_it_found_when_the_tables_cannot_be_followed():
+    image, tables = build_program([HOUSE], others=(CPU_RECORD,), corrupt_table=1)
+    client = _client_refusing_the_program_header(image + bytes(0x200), tables)
+    layout = client._read_program_layout_on_socket(None, (IMAGE_AT, TABLES_AT))
+    (master,) = layout.masters
+    assert layout.table_address == TABLES_AT and master.devices == ()
+    assert "fails its checksum" in master.error
+    assert layout_snapshot(layout)["masters"][0]["error"] == master.error
+
+
+def test_session_reader_without_header_or_records_finds_no_program():
+    client = _client_refusing_the_program_header(bytes(0x400), bytes(0x40))
+    layout = client._read_program_layout_on_socket(None, (IMAGE_AT, TABLES_AT))
+    assert layout.error == "program image not found in the memory map"
+
+
 def test_diagnostics_compare_the_stored_map():
     from custom_components.epsnet.diagnostics import program_layout_vs_map
 

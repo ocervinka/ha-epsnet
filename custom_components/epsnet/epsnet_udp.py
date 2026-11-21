@@ -829,6 +829,56 @@ class _SessionProgramSource:
         return bytes(out)
 
 
+class _HeaderlessProgramSource:
+    """A program whose header the PLC does not hand out, read from PLC memory.
+
+    The table area is read from its start, forward, as far as the decoder asks:
+    its length is not known beforehand. ``reads`` is the same log as
+    :class:`_SessionProgramSource` keeps.
+    """
+
+    def __init__(self, read, image_address: int, table_address: int, image_reads: dict[int, bytes]) -> None:
+        self._read = read
+        self.image_address = image_address
+        self.table_address = table_address
+        self._image_reads = image_reads  # shared: the same image for every table area tried
+        self._tables = bytearray()
+        self._exact = False
+
+    @property
+    def reads(self) -> dict[str, dict[int, bytes]]:
+        return {"image": dict(self._image_reads), "tables": {0: bytes(self._tables)}}
+
+    def image(self, offset: int, length: int) -> bytes:
+        if offset not in self._image_reads:
+            try:
+                self._image_reads[offset] = self._read(self.image_address + offset, length)
+            except EpsnetProtocolError:
+                self._image_reads[offset] = b""
+        return self._image_reads[offset]
+
+    def tables(self, offset: int, length: int) -> bytes:
+        end = offset + length
+        while len(self._tables) < end:
+            at = len(self._tables)
+            needed = end - at
+            needed += needed & 1
+            # a whole block ahead saves reads; one the PLC refuses (past the end
+            # of the area) is asked again for just the bytes needed
+            for size in ((needed,) if self._exact else (_DISCOVERY_MAX_READ_LENGTH, needed)):
+                try:
+                    part = self._read(self.table_address + at, max(size, needed))
+                    break
+                except EpsnetProtocolError:
+                    self._exact = True
+            else:
+                part = b""
+            if not part:
+                break
+            self._tables += part
+        return bytes(self._tables[offset:end])
+
+
 def _plausible_storage_total(size: int) -> int | None:
     """Whole image length for a header size field, or ``None`` if implausible."""
     if not 0 < size <= _STORAGE_MAX_BYTES - _STORAGE_HEADER_LEN:
@@ -1657,17 +1707,28 @@ class EpsnetUdpClient:
             # what each memory area starts with, kept for the diagnostics when
             # none of them is a program image this code knows
             seen: list[str] = []
+            refused: list[int] = []
             for token in ordered(_PROGRAM_IMAGE_ENTRY):
                 try:
                     candidate = read(token, 0x30)
                 except EpsnetProtocolError as err:
                     seen.append(f"{token:#010x}: read refused: {err}")
+                    refused.append(token)
                     continue
                 if len(candidate) == 0x30 and struct.unpack_from(">H", candidate)[0] == IMAGE_MAGIC:
                     image_address, header = token, candidate
                     break
                 seen.append(f"{token:#010x}: starts with {candidate.hex()}")
             if image_address is None or header is None:
+                # A PLC can refuse to hand out the start of its program and
+                # still let the rest be read: the I/O configuration is then
+                # found by its own structure.
+                for token in refused:
+                    layout = self._read_program_layout_without_header(
+                        read, token, ordered(_PROGRAM_TABLES_ENTRY, exclude=token)
+                    )
+                    if layout is not None:
+                        return replace(layout, notes=tuple(seen) + layout.notes)
                 return ProgramIoLayout(
                     error="program image not found in the memory map", notes=tuple(seen)
                 )
@@ -1705,6 +1766,40 @@ class EpsnetUdpClient:
         except (EpsnetError, OSError, ValueError, struct.error) as err:
             LOGGER.debug("Program layout read failed: %s", err)
             return ProgramIoLayout(error=f"program read failed: {err}")
+
+    @staticmethod
+    def _read_program_layout_without_header(
+        read, image_address: int, table_tokens: list[int]
+    ) -> ProgramIoLayout | None:
+        """The I/O configuration of a program whose header cannot be read.
+
+        ``None`` when ``image_address`` does not hold a program's bus-master
+        records. Otherwise the layout read with the first memory area that
+        works as the table area; when none does, the result with the usual
+        one, whose errors say how far the reading got.
+        """
+        image_reads: dict[int, bytes] = {}
+        first: ProgramIoLayout | None = None
+        for table_address in table_tokens:
+            source = _HeaderlessProgramSource(read, image_address, table_address, image_reads)
+            layout = decode_program_layout(source, header=False)
+            if layout.error and not layout.masters and not layout.other_records:
+                return None  # no records: not a program
+            layout = replace(
+                layout,
+                image_address=image_address,
+                table_address=table_address,
+                reads=source.reads,
+                notes=(
+                    f"{image_address:#010x}: the program header is not readable; "
+                    "bus records and tables found by their structure",
+                )
+                + layout.notes,
+            )
+            if not layout.error and not any(master.error for master in layout.masters):
+                return layout
+            first = first or layout
+        return first
 
     def _read_point_values_blocking_on_socket(
         self,

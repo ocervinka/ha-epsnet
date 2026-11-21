@@ -26,6 +26,14 @@ _HDR_RECORDS = 0x22
 _HDR_RECORDS_LEN = 0x24
 _HDR_TABLE_AREA_LEN = 0x26
 
+# Without the header (a PLC may refuse to hand it out): the bus-master records
+# sit a few bytes into this part of the image, and the table area is a chain of
+# tables, each with its own length and checksum.
+_RECORDS_WINDOW = 0x200
+_RECORDS_SCAN = 0xF0
+_RECORDS_MAX = 64
+_TABLE_AREA_MAX = 0x10000
+
 # Bus-master records (20 B each, little-endian fields)
 _RECORD_LEN = 20
 _RECORD_MARKER = 0x13
@@ -174,9 +182,45 @@ def table_checksum(length: int, data: bytes) -> int:
     return ((length >> 8) + (length & 0xFF) + sum(data)) & 0xFFFF
 
 
+def _records_start(block: bytes) -> int | None:
+    """Where the bus-master records begin in the image's records window.
+
+    They follow a short preface whose length differs between programming
+    tools; two record markers one record apart show the place.
+    """
+    for start in range(2, 0x40, 2):
+        if (
+            start + _RECORD_LEN < len(block)
+            and block[start] == _RECORD_MARKER
+            and block[start + _RECORD_LEN] == _RECORD_MARKER
+        ):
+            return start
+    return None
+
+
 class _Program:
-    def __init__(self, source: ProgramSource) -> None:
+    """The parts of a program the I/O configuration is read from.
+
+    With ``header`` they are found through the image header. Without it they
+    are found by their own structure: the records by their markers, the tables
+    by following the table area from its start, every table checked by its
+    checksum. Nothing is taken on trust either way.
+    """
+
+    def __init__(self, source: ProgramSource, *, header: bool = True) -> None:
         self.source = source
+        self._tables: dict[int, bytes] = {}
+        self.table_offsets: list[int] = []
+        # where the next table starts while the table area is being followed
+        self._follow_at: int | None = None
+        self._follow_stopped: str | None = None
+        if header:
+            self._from_header()
+        else:
+            self._from_structure()
+
+    def _from_header(self) -> None:
+        source = self.source
         header = source.image(0, _HDR_LEN)
         if len(header) < _HDR_LEN or _be16(header, 0) != IMAGE_MAGIC:
             raise ProgramLayoutError("not a program image (header marker)")
@@ -193,19 +237,76 @@ class _Program:
         if word_table_at < _HDR_LEN or word_table_len % 2:
             raise ProgramLayoutError("table index: unexpected position or length")
         raw = source.image(word_table_at, word_table_len)
-        offsets: list[int] = []
         for index in range(0, len(raw), 2):
             value = _be16(raw, index)
-            if value == 0 and offsets:
+            if value == 0 and self.table_offsets:
                 break
-            offsets.append(value)
-        self.table_offsets = tuple(offsets)
-        self._tables: dict[int, bytes] = {}
+            self.table_offsets.append(value)
+
+    def _from_structure(self) -> None:
+        source = self.source
+        block = source.image(_RECORDS_WINDOW, _RECORDS_SCAN)
+        start = _records_start(block)
+        if start is None:
+            raise ProgramLayoutError("no bus-master records where a program keeps them")
+        records = bytearray(block[start:])
+        while True:
+            end = next(
+                (o for o in range(0, len(records), _RECORD_LEN) if records[o] != _RECORD_MARKER),
+                None,
+            )
+            if end is not None:
+                del records[end:]
+                break
+            if len(records) >= _RECORDS_MAX * _RECORD_LEN:
+                raise ProgramLayoutError("bus-master records do not end")
+            more = source.image(_RECORDS_WINDOW + start + len(records), _RECORDS_SCAN)
+            if not more:
+                del records[len(records) - len(records) % _RECORD_LEN :]
+                break
+            records += more
+        # This can take in records the header would not count (bus masters the
+        # program keeps but does not use); they decode as masters without devices.
+        self.records = bytes(records)
+        self.table_area_len = _TABLE_AREA_MAX
+        self._follow_at = 2
+
+    def _follow_to(self, number: int) -> None:
+        """Follow the table area until table ``number`` is known, or it ends."""
+        while self._follow_at is not None and len(self.table_offsets) <= number:
+            offset = self._follow_at
+            self._follow_at = None
+            head = self.source.tables(offset, 2)
+            length = _be16(head, 0) if len(head) == 2 else 0
+            if length == 0 or offset + 4 + length > self.table_area_len:
+                self._follow_stopped = f"no table at {offset:#x}"
+                return
+            body = self.source.tables(offset + 2, length + 2)
+            if len(body) != length + 2 or _be16(body, length) != table_checksum(
+                length, body[:length]
+            ):
+                self._follow_stopped = f"the table at {offset:#x} fails its checksum"
+                return
+            self._tables[len(self.table_offsets)] = body[:length]
+            self.table_offsets.append(offset)
+            # tables start on even addresses
+            self._follow_at = offset + 4 + length + (length & 1)
+
+    def offset_of(self, number: int) -> int | None:
+        """Where table ``number`` sits in the table area (once it is known)."""
+        return self.table_offsets[number] if 0 <= number < len(self.table_offsets) else None
 
     def table(self, number: int) -> bytes:
+        if number >= 0:
+            self._follow_to(number)
         if number in self._tables:
             return self._tables[number]
         if not 0 <= number < len(self.table_offsets):
+            if self._follow_stopped:
+                raise ProgramLayoutError(
+                    f"table {number} not found: {self._follow_stopped} "
+                    f"({len(self.table_offsets)} tables before it)"
+                )
             raise ProgramLayoutError(f"table {number} not in the table index")
         offset = self.table_offsets[number]
         if offset + 4 > self.table_area_len:
@@ -313,8 +414,8 @@ def _decode_master(program: _Program, record: tuple, init_table: int) -> Program
                 continue  # unused line
             hw_code = serial = position = init_offset = None
             if init:
-                init_offset = program.table_offsets[init] if init < len(program.table_offsets) else None
                 init_data = program.table(init)
+                init_offset = program.offset_of(init)
                 if len(init_data) >= _INIT.size:
                     hw_code, _, serial, position, _ = _INIT.unpack_from(init_data)
             kind = {_LINE_MASTER: "master", _LINE_DEVICE: "device"}.get(
@@ -378,10 +479,13 @@ def _decode_master(program: _Program, record: tuple, init_table: int) -> Program
         )
 
 
-def decode_program_layout(source: ProgramSource) -> ProgramIoLayout:
-    """Decode the I/O configuration; structural problems end up in ``error``."""
+def decode_program_layout(source: ProgramSource, *, header: bool = True) -> ProgramIoLayout:
+    """Decode the I/O configuration; structural problems end up in ``error``.
+
+    ``header=False`` reads a program whose header the PLC does not hand out.
+    """
     try:
-        program = _Program(source)
+        program = _Program(source, header=header)
     except ProgramLayoutError as err:
         return ProgramIoLayout(error=str(err))
     masters: list[ProgramMaster] = []
