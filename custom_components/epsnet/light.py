@@ -26,7 +26,12 @@ async def async_setup_entry(hass, entry, async_add_entities) -> None:
 
 
 class EpsnetLightEntity(EpsnetEntity, LightEntity):
-    """Light entity derived from relay or dimmer `.pub` variables."""
+    """A light: an output with its command variables, or a dimmer output itself.
+
+    A dimmer output without command variables (``spec.direct_output``) is
+    switched by a press of its front button and dimmed by a level written
+    into the output; see the switch platform for how the result is checked.
+    """
 
     def __init__(self, coordinator, spec, *, entry_id: str) -> None:
         super().__init__(coordinator, spec, entry_id=entry_id)
@@ -72,6 +77,16 @@ class EpsnetLightEntity(EpsnetEntity, LightEntity):
 
     async def async_turn_on(self, **kwargs) -> None:
         brightness = kwargs.get(ATTR_BRIGHTNESS)
+        if self.spec.direct_output:
+            # a dimmer output without command variables: on by a press of its
+            # front button, a brightness by a level written into the output
+            if brightness is not None:
+                await self._async_write_output(
+                    _from_brightness(int(brightness), self.spec.brightness_scale)
+                )
+            else:
+                await self._async_switch_output(True, self.spec.brightness_scale)
+            return
         if self.spec.supports_brightness and brightness is not None:
             if self.spec.set_value_name is None:
                 raise HomeAssistantError(f"{self.name} does not support dimming")
@@ -90,6 +105,9 @@ class EpsnetLightEntity(EpsnetEntity, LightEntity):
         self._set_optimistic_state(self._optimistic_on_value(brightness))
 
     async def async_turn_off(self, **kwargs) -> None:
+        if self.spec.direct_output:
+            await self._async_switch_output(False, self.spec.brightness_scale)
+            return
         if self.spec.off_command_name is not None:
             await self.coordinator.async_press_command(self.spec.off_command_name)
         elif self.spec.set_value_name is not None:

@@ -126,6 +126,7 @@ def test_build_catalog_snapshot_includes_pub_role_counts_and_ranges() -> None:
         "program_variable_entities": 0,
         "press_buttons": 0,
         "press_switches": 0,
+        "direct_outputs": 0,
     }
     assert snapshot["unmatched_runtime_devices"] == []
     assert snapshot["unmatched_pub_devices"] == []
@@ -232,6 +233,7 @@ def test_build_catalog_snapshot_marks_runtime_only_mode_without_pub() -> None:
         "program_variable_entities": 0,
         "press_buttons": 0,
         "press_switches": 0,
+        "direct_outputs": 0,
     }
     assert snapshot["groups"][0]["devices"][0]["pub_match"] is None
     assert snapshot["unmatched_pub_devices"] == []

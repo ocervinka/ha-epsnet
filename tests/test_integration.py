@@ -880,8 +880,10 @@ async def test_setup_with_a_file_of_free_names_names_the_inputs_and_outputs(
         assert names["io_0_2_3126_1a2b_temperature"] == "HallTemperature"
         assert names["io_0_2_3151_2b3c_relay_re1"] == "BalconyLamp"
         assert names["io_0_2_3151_2b3c_relay_re2"] == "RE2"
-        # no command variables: a relay is switched by a press of its front button
-        assert not hass.states.async_entity_ids("light")
+        # no command variables: a relay is switched by a press of its front
+        # button, and the only lights are the dimmer's outputs themselves
+        assert hass.states.async_entity_ids("light") == [
+            "light.da2_22m_3c4d_out1", "light.da2_22m_3c4d_out2"]
         assert registry.async_get("switch.sa2_012m_2b3c_balconylamp").unique_id == (
             f"{entry.entry_id}_io_0_2_3151_2b3c_relay_re1")
         assert registry.async_get("binary_sensor.sa2_012m_2b3c_balconylamp") is None

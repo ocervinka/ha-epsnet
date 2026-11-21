@@ -535,6 +535,9 @@ class EntitySpec:
     # (a button entity), or the front button of a relay or dimmer output that
     # has no command variables (a switch that presses it to change the output)
     press_name: str | None = None
+    # the state is a module's output that has no command variables: a value
+    # written into it stays unless the PLC program assigns that output itself
+    direct_output: bool = False
 
 
 @dataclass(frozen=True, slots=True)

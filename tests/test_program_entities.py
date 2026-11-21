@@ -100,12 +100,13 @@ def test_without_a_map_every_channel_gets_an_entity():
     assert (relay12.register, relay12.address, relay12.bit) == ("Y", 2, 3)
     out2 = catalog.entries_by_name["io_0_2_3101_3c4d_dimmer_out2"]
     assert (out2.register, out2.address, out2.data_type) == ("Y", 7, "REAL")
-    # no lights: nothing is switched by command variables, only by a press
+    # nothing is switched by command variables: the relays and LEDs are
+    # switches and the dimmer outputs lights that act on the outputs themselves
     assert {e.platform for e in entities.values()} == {
-        "sensor", "binary_sensor", "button", "switch"}
+        "sensor", "binary_sensor", "button", "switch", "light"}
     # 4 buttons + temp + 4 LEDs, 12 + 12, 2 + 2 + 2; a press for each of the
-    # 4 wall buttons, a switch beside each of the 2 dimmer levels
-    assert len(entities) == 9 + 24 + 6 + 4 + 2
+    # 4 wall buttons
+    assert len(entities) == 9 + 24 + 6 + 4
     devices = {e.device_key for e in entities.values()}
     assert {catalog.devices_by_key[k].name for k in devices} == {
         "WSB2-40 1A2B", "SA2-012M 2B3C", "DA2-22M 3C4D"}

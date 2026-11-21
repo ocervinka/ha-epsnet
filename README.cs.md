@@ -26,7 +26,8 @@ v upozornění v **Opravách**, takže víte, co chybí.
 - bez mapy zobrazí stavy všech vstupů a výstupů podporovaných modulů CIB podle konfigurace I/O
   uložené přímo v programu PLC
 - ovládání bez povelových proměnných: tlačítka nástěnných ovladačů lze stisknout z Home Assistantu
-  a výstupy relé a stmívačů přepínat tlačítky přímo na jejich modulech
+  a relé, výstupy stmívačů a signalizační LED ovládat tlačítky přímo na modulech nebo zápisem
+  přímo do výstupu
 - entity pro světla, spínače, tlačítka, binární vstupy (tlačítka, PIR, magnetické kontakty) a teploty
 - ostatní zveřejněné proměnné programu (příznaky, žádané hodnoty, povely) jako entity, které si
   povolíte podle potřeby
@@ -78,7 +79,8 @@ Na další věci se nastavení ptá jen tehdy, když je z PLC samo nezjistí:
 
 - **V PLC nejsou uložené názvy proměnných** (viz níže): nahrajte soubor `.pub` k programu, nebo
   pokračujte bez něj. Home Assistant pak všechno pojmenuje podle typu modulu a adresy na sběrnici
-  a ovládá jen stiskem tlačítek (viz „Ovládání stiskem“ níže), dokud soubor nedoplníte.
+  a ovládá jen to, co program v PLC dovolí (viz „Ovládání bez povelových proměnných“ níže), dokud
+  soubor nedoplníte.
 - **PLC právě používá jiný program** (například programovací nástroj): zavřete ho a zkuste to
   znovu, nebo raději nahrajte soubor `.pub`.
 - **Nahraný soubor neodpovídá žádnému z modulů** (žádná jeho proměnná není vstupem ani výstupem
@@ -116,9 +118,10 @@ a jeho entity nesou celé názvy proměnných. Jen když se konfiguraci I/O z pr
 přečíst, seskupí integrace proměnné podle názvů a skupiny přiřadí modulům podle pořadí; k tomu
 jsou potřeba názvy v podobě, jakou vytváří FoxTool.
 
-**K ovládání jsou potřeba povelové proměnné.** Program PLC výstupy v každém cyklu přepisuje,
-takže Home Assistant nemůže do výstupu zapsat přímo a o přepnutí žádá program. Výstup lze ovládat,
-když pro něj mapa obsahuje tyto proměnné (příklad pro název `Lamp`):
+**K ovládání přes program jsou potřeba povelové proměnné.** Program PLC své výstupy obvykle
+nastavuje v každém cyklu, takže hodnota, kterou do takového výstupu zapíše Home Assistant, hned
+zmizí. Home Assistant proto o přepnutí žádá program. Jde to, když mapa pro výstup obsahuje tyto
+proměnné (příklad pro název `Lamp`):
 
 | Proměnná | Kde | K čemu je |
 | --- | --- | --- |
@@ -129,29 +132,44 @@ když pro něj mapa obsahuje tyto proměnné (příklad pro název `Lamp`):
 Programy z FoxToolu je zveřejňují pro každý výstup. Do vlastního programu si je doplníte sami,
 spolu s několika řádky, které na ně reagují. Entita je světlo, pokud název obsahuje `light`, jinak
 spínač. U výstupu stmívače je `Lamp` typu `REAL` a obsahuje úroveň v procentech; tu Home Assistant
-zapisuje při nastavení jasu. Výstup bez těchto proměnných se místo toho přepíná stiskem tlačítka
-na modulu (další odstavec). Pokud mapa neobsahuje žádné, napíše to nastavení ve svém závěrečném
+zapisuje při nastavení jasu. Výstup bez těchto proměnných se místo toho ovládá
+přímo (další odstavec). Pokud mapa neobsahuje žádné, napíše to nastavení ve svém závěrečném
 shrnutí.
 
-**Ovládání stiskem.** Když se do vstupu zapíše 1, PLC to vezme jako jeden krátký stisk: program
-ho uvidí po dobu jednoho cyklu a pak PLC znovu načte skutečný vstup. Integrace toho využívá na
-dvou místech, s mapou i bez ní:
+**Ovládání bez povelových proměnných.** Umožňují ho dvě vlastnosti PLC, s mapou i bez ní:
+
+- *Vstup* se v každém cyklu načítá z modulu. Zapsaná 1 v něm vydrží jen do té doby, takže program
+  uvidí jeden krátký stisk.
+- *Výstup* si zapsanou hodnotu ponechá, pokud ho program sám nenastavuje. Většina programů výstupy,
+  které řídí, nastavuje v každém cyklu, a zapsaná hodnota pak hned zmizí.
+
+Integrace je využívá takto:
 
 - **Tlačítka nástěnných ovladačů.** Každé tlačítko má vedle svého senzoru i entitu tlačítka.
   Když ji v Home Assistantu stisknete, program udělá totéž, co při stisku skutečného tlačítka.
   Jde jen o krátký stisk, dlouhý ani dvojitý takto udělat nelze.
-- **Výstupy relé a stmívačů.** Tyto moduly mají pro každý výstup malé tlačítko přímo na sobě
-  a programy z FoxToolu jím přepínají výstup se stejným číslem (výstup stmívače jde na 100 % nebo
-  na 0). Výstup bez povelových proměnných je proto spínač: Home Assistant výstup přečte, tlačítko
-  stiskne jen tehdy, když výstup není v požadovaném stavu, a výstup přečte znovu. Pokud se
-  nezměnil, program na toto tlačítko nereaguje: spínač ohlásí chybu a dál ukazuje skutečný stav.
-  Výstup stmívače si ponechá senzor úrovně a spínač dostane vedle něj; úroveň takto nastavit nejde.
+- **Relé.** Modul relé má pro každý výstup malé tlačítko přímo na sobě a programy z FoxToolu jím
+  přepínají výstup se stejným číslem. Relé bez povelových proměnných je proto spínač: Home
+  Assistant výstup přečte, tlačítko stiskne jen tehdy, když výstup není v požadovaném stavu,
+  a výstup přečte znovu. Pokud stisk nic nezměnil, zapíše hodnotu přímo do výstupu a přečte ho
+  ještě jednou.
+- **Výstupy stmívačů.** Výstup stmívače bez povelových proměnných je světlo. Zapnutí a vypnutí
+  funguje jako u relé (stisk tlačítka na modulu nastaví výstup na 100 % nebo na 0). Jas se do
+  výstupu zapisuje jako úroveň.
+- **Signalizační LED.** LED nástěnného ovladače bez povelových proměnných je spínač, který
+  zapisuje přímo do výstupu.
 
-Výstup, který povelové proměnné má, se ovládá přes ně, nikdy stiskem. Ve vlastním programu stačí
-pro každý výstup jeden řádek, který ho tlačítkem na modulu přepne. Ověřeno na centrální jednotce
-CU2-01M (firmware 7.2) s programem z FoxToolu i s ručně psanými programy, na modulech SA2-012M,
-SA2-04M/Sn a DA2-22M. Jiné CPU nebo firmware se může k zápisu do vstupu chovat jinak; dejte prosím
-vědět, co pozorujete.
+Pokud výstup ani potom není v požadovaném stavu, řídí ho program v PLC sám: entita ohlásí chybu
+a dál ukazuje skutečný stav. LED nebo jas tedy takto nastavíte jen v programu, který daný výstup
+sám nenastavuje.
+
+Výstup, který povelové proměnné má, se ovládá přes ně, nikdy těmito způsoby. Ve vlastním programu
+stačí pro každý výstup jeden řádek, který ho tlačítkem na modulu přepne. Změřeno na centrální
+jednotce CU2-01M (firmware 7.2): stisk s programem z FoxToolu i s ručně psanými programy, na
+modulech SA2-012M, SA2-04M/Sn a DA2-22M; zápis do výstupu s ručně psaným programem, na jednom relé
+(hodnota zůstala) a na jedné LED, kterou program nastavuje (hodnota nezůstala). Zápis úrovně do
+výstupu stmívače zatím na PLC vyzkoušený není. Jiné CPU nebo firmware se může chovat jinak; dejte
+prosím vědět, co pozorujete.
 
 **Ostatní proměnné programu.** Všechno ostatní, co program zveřejňuje (příznaky, režimy, žádané
 hodnoty, povely pod vlastními názvy), nabídne integrace jako entity, které přímo odpovídají hodnotě
@@ -174,13 +192,12 @@ zveřejňovat. Proměnné typu čas, datum a text entity nemají.
 Nastavení může pokračovat i bez mapy. Integrace pak přečte konfiguraci I/O, která je součástí
 programu PLC (který modul leží kde v paměti PLC), a vytvoří entitu pro každý vstup a výstup
 podporovaných modulů CIB: tlačítka, vstupy, teploty, stavy relé a LED, úrovně stmívačů. Entity
-se jmenují podle typu modulu a adresy na sběrnici (např. *WSB2-40 1A2B Temperature*). Program PLC
-výstupy v každém cyklu přepisuje, takže do výstupu přímo zapsat nejde; bez povelových proměnných
-programu umí Home Assistant jen mačkat tlačítka (viz „Ovládání stiskem“ výše). Když soubor `.pub`
+se jmenují podle typu modulu a adresy na sběrnici (např. *WSB2-40 1A2B Temperature*). Co Home
+Assistant dokáže ovládat bez povelových proměnných programu, závisí na programu (viz „Ovládání
+bez povelových proměnných“ výše). Když soubor `.pub`
 doplníte později, tyto entity zůstanou (stejná ID, historie i automatizace), dostanou názvy
 z vašeho programu a přibudou světla a spínače, pro které má program povelové proměnné. Výstup,
-který je dostane, pak vedle svého světla nebo spínače ukazuje binární senzor, ne už spínač
-ovládaný stiskem. Moduly na interní sběrnici CPU (ne CIB) zahrnuté
+který je dostane, pak vedle svého světla nebo spínače ukazuje senzor a přímo se už neovládá. Moduly na interní sběrnici CPU (ne CIB) zahrnuté
 nejsou.
 
 S mapou integrace přidá i kanály, které žádná z entit mapy nezobrazuje (např. sabotážní kontakty,

@@ -30,6 +30,9 @@ _POLL_METRICS_PUBLISH_INTERVAL_SECONDS = 5.0
 # A program reacts within a few of its cycles (measured: 70 to 210 ms).
 PRESS_CONFIRM_SECONDS = 1.5
 PRESS_POLL_SECONDS = 0.05
+# After a value is written into an output, how long until it is read back: a
+# program that assigns the output itself has taken it back by then.
+OUTPUT_CONFIRM_SECONDS = 0.3
 
 
 def output_is_on(value: ScalarValue | None) -> bool:
@@ -480,36 +483,58 @@ class EpsnetDataCoordinator(
         LOGGER.debug("EPSNET command press requested: %s", command_name)
         await self.client.set_value(self.catalog.entries_by_name[command_name], True)
 
-    async def async_switch_by_press(
-        self, state_name: str, press_name: str, on: bool
-    ) -> ScalarValue | None:
-        """Bring an output to ``on`` by a press of its front button.
-
-        A press flips the output, so the output is read first: already as
-        wanted, nothing is pressed. After a press the output is read until it
-        changed. Returns its value then, or ``None`` when it did not change in
-        time (the PLC program does not act on that button).
-        """
+    async def _async_read_output(self, state_name: str) -> ScalarValue:
         entry = self.catalog.entries_by_name[state_name]
-        formula = self._formula_for(state_name)
+        raw = (await self.client.get_values((entry,)))[state_name]
+        return self._apply_formula(raw, self._formula_for(state_name))
 
-        async def _read() -> ScalarValue:
-            raw = (await self.client.get_values((entry,)))[state_name]
-            return self._apply_formula(raw, formula)
+    async def async_switch_output(
+        self,
+        state_name: str,
+        on: bool,
+        *,
+        press_name: str | None = None,
+        on_value: ScalarValue = True,
+    ) -> ScalarValue | None:
+        """Bring an output without command variables to ``on``.
 
-        value = await _read()
+        The output is read first: already as wanted, nothing is done. With a
+        front button (``press_name``) that is pressed, which flips the output
+        in most programs, and the output is read until it changed. When it did
+        not (or there is no such button), ``on_value`` or its zero is written
+        into the output itself. Returns the output's value, or ``None`` when
+        it is still not as wanted: the PLC program controls it itself.
+        """
+        value = await self._async_read_output(state_name)
         if output_is_on(value) == on:
             return value
-        LOGGER.debug("EPSNET press requested: %s to switch %s", press_name, state_name)
-        await self.client.set_value(self.catalog.entries_by_name[press_name], True)
-        deadline = monotonic() + PRESS_CONFIRM_SECONDS
-        while True:
-            await asyncio.sleep(PRESS_POLL_SECONDS)
-            value = await _read()
-            if output_is_on(value) == on:
-                return value
-            if monotonic() >= deadline:
-                return None
+        if press_name is not None:
+            LOGGER.debug("EPSNET press requested: %s to switch %s", press_name, state_name)
+            await self.client.set_value(self.catalog.entries_by_name[press_name], True)
+            deadline = monotonic() + PRESS_CONFIRM_SECONDS
+            while monotonic() < deadline:
+                await asyncio.sleep(PRESS_POLL_SECONDS)
+                value = await self._async_read_output(state_name)
+                if output_is_on(value) == on:
+                    return value
+        off_value: ScalarValue = False if isinstance(on_value, bool) else 0.0
+        return await self.async_write_output(state_name, on_value if on else off_value)
+
+    async def async_write_output(self, state_name: str, value: ScalarValue) -> ScalarValue | None:
+        """Write a value into an output and read it back a moment later.
+
+        Returns what the output holds then, or ``None`` when it is not what
+        was written: the PLC program assigns that output itself.
+        """
+        LOGGER.debug("EPSNET output write requested: %s value=%r", state_name, value)
+        await self.client.set_value(self.catalog.entries_by_name[state_name], value)
+        await asyncio.sleep(OUTPUT_CONFIRM_SECONDS)
+        now = await self._async_read_output(state_name)
+        if isinstance(value, bool):
+            stayed = output_is_on(now) == value
+        else:
+            stayed = abs(float(now) - float(value)) <= 0.5
+        return now if stayed else None
 
     async def async_set_scalar(self, command_name: str, value: float | int | str) -> None:
         """Write a scalar value variable."""

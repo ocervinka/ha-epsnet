@@ -117,7 +117,7 @@ def _async_update_no_map_issue(
     if from_program:
         LOGGER.warning(
             "No published-variable map for %s: %d module channels placed from the PLC "
-            "program, named by module and switched only by a press of their buttons",
+            "program, named by module and controlled only as far as the PLC program allows",
             entry.title,
             from_program,
         )

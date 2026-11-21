@@ -210,10 +210,11 @@ def _file_names_a_module(result: SetupResult) -> bool:
 def _map_can_switch(result: SetupResult) -> bool:
     """True when the map has command variables: something is switched directly.
 
-    Not an output switched by a press of its front button: that needs no map.
+    Not an output switched itself (by its front button or a written value):
+    that needs no map.
     """
     return any(
-        entity.platform in ("light", "switch") and entity.press_name is None
+        entity.platform in ("light", "switch") and not entity.direct_output
         for entity in _module_entities_of_the_map(result)
     )
 
@@ -692,6 +693,7 @@ class EpsnetConfigFlow(ProgressSteps, config_entries.ConfigFlow, domain=DOMAIN):
                 sum(
                     entity.platform in ("binary_sensor", "sensor")
                     or entity.press_name is not None
+                    or entity.direct_output
                     for entity in _module_entities_of_the_map(result)
                 )
                 + result.catalog.channels_named_by_map

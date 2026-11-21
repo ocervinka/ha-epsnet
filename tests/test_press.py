@@ -1,8 +1,9 @@
-"""Control by a written press: wall buttons, and outputs through their front buttons.
+"""Control without command variables: wall buttons are pressed, outputs are
+switched through their front buttons or by a value written into them.
 
 Synthetic programs only. Addresses in the test house: wall switch buttons
-X4.0-3; relay module front buttons X9.0-X10.3, relays Y1.0-Y2.3; dimmer front
-buttons X12.0-1, outputs Y3 and Y7.
+X4.0-3, LEDs Y0.0-3; relay module front buttons X9.0-X10.3, relays Y1.0-Y2.3;
+dimmer front buttons X12.0-1, outputs Y3 and Y7.
 """
 
 from __future__ import annotations
@@ -86,12 +87,22 @@ def test_without_command_variables_an_output_is_switched_by_its_front_button():
     # the front button itself is still shown
     assert entities["io_0_2_3151_2b3c_local_sw5"].platform == "binary_sensor"
 
-    # a dimmer output keeps its level and gets an on/off switch beside it
-    level = entities["io_0_2_3101_3c4d_dimmer_out2"]
-    switch = entities["io_0_2_3101_3c4d_dimmer_out2_switch"]
-    assert (level.platform, switch.platform) == ("sensor", "switch")
-    assert switch.state_name == level.state_name
-    assert _place(catalog, switch.press_name) == ("X", 12, 1)
+    assert relay5.direct_output
+
+    # a dimmer output is a light: on and off by its front button, dimmed by a
+    # level written into the output
+    dimmer = entities["io_0_2_3101_3c4d_dimmer_out2"]
+    assert (dimmer.platform, dimmer.supports_brightness, dimmer.brightness_scale) == (
+        "light", True, 100.0)
+    assert _place(catalog, dimmer.state_name) == ("Y", 7, None)
+    assert _place(catalog, dimmer.press_name) == ("X", 12, 1)
+    assert dimmer.direct_output and "io_0_2_3101_3c4d_dimmer_out2_switch" not in entities
+
+    # an indicator LED has no button of its own: a switch that writes the output
+    led = entities["io_0_2_3126_1a2b_led_red1"]
+    assert (led.platform, led.press_name, led.direct_output, led.enabled_by_default) == (
+        "switch", None, True, True)
+    assert _place(catalog, led.state_name)[0] == "Y"
 
 
 def test_an_output_with_command_variables_is_not_switched_by_a_press():
@@ -119,23 +130,36 @@ state_OUTPUT_R1_heater Y B 1 .1 BOOL PUB_OUT
 
 
 class _Plc:
-    """Outputs that flip on a press of their front button, as a program does it."""
+    """Inputs and outputs as a PLC keeps them.
 
-    def __init__(self, *, reacts=True):
-        self.bits: dict[tuple[str, int, int | None], int] = {}
-        self.reacts = reacts
+    ``front_buttons``: the program flips relay n on a press of front button n
+    (a dimmer output goes to 100 or 0). ``assigns_outputs``: the program
+    assigns its outputs every cycle, so a value written into one does not stay.
+    """
+
+    def __init__(self, *, front_buttons=True, assigns_outputs=False):
+        self.values: dict[tuple[str, int, int | None], object] = {}
+        self.front_buttons = front_buttons
+        self.assigns_outputs = assigns_outputs
         self.written: list[tuple[tuple[str, int, int | None], object]] = []
 
     async def get_values(self, entries, *_a, **_k):
-        return {e.name: self.bits.get((e.register, e.address, e.bit), 0) for e in entries}
+        return {e.name: self.values.get((e.register, e.address, e.bit), 0) for e in entries}
 
     async def set_value(self, entry, value):
         place = (entry.register, entry.address, entry.bit)
         self.written.append((place, value))
-        if self.reacts and entry.register == "X" and entry.address in (9, 10):
+        if entry.register == "Y":
+            if not self.assigns_outputs:
+                self.values[place] = value
+        elif self.front_buttons and entry.address in (9, 10):
             # relay module: front button n (X9.0..) flips relay n (Y1.0..)
             output = ("Y", entry.address - 8, entry.bit)
-            self.bits[output] = 0 if self.bits.get(output) else 1
+            self.values[output] = 0 if self.values.get(output) else 1
+        elif self.front_buttons and entry.address == 12:
+            # dimmer: front button 1 / 2 (X12.0 / .1) takes output Y3 / Y7 to 100 or 0
+            output = ("Y", 3 + 4 * entry.bit, None)
+            self.values[output] = 0.0 if self.values.get(output) else 100.0
 
 
 async def _set_up_without_a_map(hass: HomeAssistant, plc: _Plc):
@@ -160,7 +184,7 @@ def _patch_plc(plc: _Plc):
 def _fast_confirm():
     with patch("custom_components.epsnet.coordinator.PRESS_CONFIRM_SECONDS", 0.05), patch(
         "custom_components.epsnet.coordinator.PRESS_POLL_SECONDS", 0.001
-    ):
+    ), patch("custom_components.epsnet.coordinator.OUTPUT_CONFIRM_SECONDS", 0.001):
         yield
 
 
@@ -193,10 +217,27 @@ async def test_switch_presses_only_when_needed_and_reads_the_output_back(
         await hass.config_entries.async_unload(entry.entry_id)
 
 
-async def test_switch_reports_a_program_that_ignores_the_front_button(
+async def test_switch_writes_the_output_when_the_front_button_changes_nothing(
     hass: HomeAssistant, _fast_confirm
 ) -> None:
-    plc = _Plc(reacts=False)
+    plc = _Plc(front_buttons=False)
+    with _patch_plc_with_a_program_layout(), _patch_plc(plc):
+        entry = await _set_up_without_a_map(hass, plc)
+        relay = "switch.sa2_012m_2b3c_re5"
+        await hass.services.async_call("switch", "turn_on", {"entity_id": relay}, blocking=True)
+        # the press first, then the output itself
+        assert plc.written == [(("X", 9, 4), True), (("Y", 1, 4), True)]
+        assert hass.states.get(relay).state == "on"
+        await hass.services.async_call("switch", "turn_off", {"entity_id": relay}, blocking=True)
+        assert plc.written[2:] == [(("X", 9, 4), True), (("Y", 1, 4), False)]
+        assert hass.states.get(relay).state == "off"
+        await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_switch_reports_a_program_that_controls_the_output_itself(
+    hass: HomeAssistant, _fast_confirm
+) -> None:
+    plc = _Plc(front_buttons=False, assigns_outputs=True)
     with _patch_plc_with_a_program_layout(), _patch_plc(plc):
         entry = await _set_up_without_a_map(hass, plc)
         relay = "switch.sa2_012m_2b3c_re5"
@@ -204,8 +245,62 @@ async def test_switch_reports_a_program_that_ignores_the_front_button(
             await hass.services.async_call("switch", "turn_on", {"entity_id": relay}, blocking=True)
         assert raised.value.translation_key == "output_did_not_change"
         assert raised.value.translation_placeholders == {"name": "SA2-012M 2B3C RE5"}
-        assert plc.written == [(("X", 9, 4), True)]
+        assert plc.written == [(("X", 9, 4), True), (("Y", 1, 4), True)]
         assert hass.states.get(relay).state == "off"
+        await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_an_led_is_a_switch_that_writes_its_output(
+    hass: HomeAssistant, _fast_confirm
+) -> None:
+    plc = _Plc()
+    with _patch_plc_with_a_program_layout(), _patch_plc(plc):
+        entry = await _set_up_without_a_map(hass, plc)
+        led = "switch.wsb2_40_1a2b_red1"
+        assert hass.states.get(led).state == "off"
+        await hass.services.async_call("switch", "turn_on", {"entity_id": led}, blocking=True)
+        (place, value), = plc.written
+        assert place[0] == "Y" and value is True
+        assert hass.states.get(led).state == "on"
+
+        # a program that drives its LEDs takes the value back: the switch says so
+        plc.assigns_outputs = True
+        with pytest.raises(HomeAssistantError) as raised:
+            await hass.services.async_call("switch", "turn_off", {"entity_id": led}, blocking=True)
+        assert raised.value.translation_key == "output_write_did_not_stay"
+        assert raised.value.translation_placeholders == {"name": "WSB2-40 1A2B RED1"}
+        assert hass.states.get(led).state == "on"
+        await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_a_dimmer_output_is_a_light_pressed_on_and_dimmed_by_a_written_level(
+    hass: HomeAssistant, _fast_confirm
+) -> None:
+    plc = _Plc()
+    with _patch_plc_with_a_program_layout(), _patch_plc(plc):
+        entry = await _set_up_without_a_map(hass, plc)
+        light = "light.da2_22m_3c4d_out2"
+        assert hass.states.get(light).state == "off"
+
+        await hass.services.async_call("light", "turn_on", {"entity_id": light}, blocking=True)
+        assert plc.written == [(("X", 12, 1), True)]
+        assert hass.states.get(light).attributes["brightness"] == 255
+
+        await hass.services.async_call(
+            "light", "turn_on", {"entity_id": light, "brightness": 102}, blocking=True
+        )
+        assert plc.written[1:] == [(("Y", 7, None), 40.0)]
+        assert hass.states.get(light).attributes["brightness"] == 102
+
+        await hass.services.async_call("light", "turn_off", {"entity_id": light}, blocking=True)
+        assert plc.written[2:] == [(("X", 12, 1), True)]
+        assert hass.states.get(light).state == "off"
+
+        # no rule for the front button in the program: on is written as 100 %
+        plc.front_buttons = False
+        await hass.services.async_call("light", "turn_on", {"entity_id": light}, blocking=True)
+        assert plc.written[3:] == [(("X", 12, 1), True), (("Y", 7, None), 100.0)]
+        assert hass.states.get(light).state == "on"
         await hass.config_entries.async_unload(entry.entry_id)
 
 
@@ -231,5 +326,7 @@ async def test_the_sensor_an_output_had_before_gives_way_to_its_switch(hass: Hom
 
     _async_remove_replaced_entities(hass, entry, catalog)
     assert registry.async_get(old_sensor) is None
-    for kept in (front_button, level, not_in_catalog):
+    # the dimmer's level sensor gives way to its light
+    assert registry.async_get(level) is None
+    for kept in (front_button, not_in_catalog):
         assert registry.async_get(kept) is not None

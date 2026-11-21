@@ -67,11 +67,12 @@ def test_names_without_any_structure_name_the_inputs_and_outputs():
     assert entities["io_0_2_3126_1a2b_button_down1"].name == "DOWN1"  # not in the map
     assert catalog.channels_named_by_map == 3
     # nothing is hidden because of the map; nothing is switched by command
-    # variables, only by a press of a button
+    # variables: buttons are pressed, outputs switched or dimmed themselves
     assert all(e.enabled_by_default for e in entities.values() if not e.diagnostic)
     assert {e.platform for e in entities.values()} == {
-        "binary_sensor", "sensor", "button", "switch"}
-    assert all(e.press_name for e in entities.values() if e.platform in ("button", "switch"))
+        "binary_sensor", "sensor", "button", "switch", "light"}
+    assert all(e.press_name for e in entities.values() if e.platform == "button")
+    assert all(e.direct_output for e in entities.values() if e.platform in ("switch", "light"))
     # the modules stay known by their hardware
     assert {d.name for d in _module_devices(catalog).values()} == {
         "WSB2-40 1A2B", "SA2-012M 2B3C", "DA2-22M 3C4D"}
@@ -169,7 +170,7 @@ def test_variables_of_one_module_the_names_split_are_one_device():
         ]
     catalog = _catalog("\n".join(lines))
     switched = {e.key: e for e in catalog.entities
-                if e.platform in ("light", "switch") and e.press_name is None}
+                if e.platform in ("light", "switch") and not e.direct_output}
     assert set(switched) == {f"output_r1_{name}" for name in (
         "light_a", "light_b", "light_c", "light_d", "pump", "zone")}
     assert {e.device_key for e in switched.values()} == {"output_r1"}

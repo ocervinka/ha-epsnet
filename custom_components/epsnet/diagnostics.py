@@ -152,8 +152,10 @@ def build_catalog_snapshot(
             # through the front button of their module
             "press_buttons": sum(e.platform == "button" for e in catalog.entities),
             "press_switches": sum(
-                e.platform == "switch" and e.press_name is not None for e in catalog.entities
+                e.platform != "button" and e.press_name is not None for e in catalog.entities
             ),
+            # outputs without command variables, switched or dimmed themselves
+            "direct_outputs": sum(e.direct_output for e in catalog.entities),
         },
         "controller_identity": catalog.runtime_inventory.controller_identity,
         "root_identity": catalog.runtime_inventory.root_identity,

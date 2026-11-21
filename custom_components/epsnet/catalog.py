@@ -54,7 +54,6 @@ _LAST_ADDRESS = 0xFFFF
 # Key endings of what a press of an input gives: the input as it is written,
 # and the on/off switch of an output that is shown by a value sensor.
 PRESS_KEY_SUFFIX = "_press"
-PRESS_SWITCH_KEY_SUFFIX = "_switch"
 
 GENERIC_MODEL_DEFINITIONS = (
     DeviceTypeDefinition(
@@ -1209,18 +1208,22 @@ def _add_press_entities(
     entries_by_name: dict[str, PubEntry],
     channels: list[PlacedChannel],
 ) -> tuple[tuple[EntitySpec, ...], dict[str, PubEntry]]:
-    """What a written press can do, with or without a variable map.
+    """Control that needs no command variables, with or without a variable map.
 
-    The PLC takes a 1 written to an input as one short press: the program sees
-    it for a cycle, then the PLC reads the input again. So:
+    Two things the PLC does make it possible. It takes a 1 written to an input
+    as one short press: the program sees it for a cycle, then the PLC reads the
+    input again. And an output keeps a value written into it, unless the
+    program assigns that output itself. So:
 
     - every button of a wall-switch module gets a button entity that presses
       it. The program does whatever it does on a press of the real button.
-    - a relay or dimmer module has a front button per output, and programs
-      commonly flip output n on front button n. An output without command
-      variables becomes a switch that presses its front button when the output
-      is not in the wanted state, and reads the output back. A dimmer output
-      keeps its level sensor and gets the switch beside it.
+    - an output without command variables is controlled itself. A relay or an
+      indicator LED becomes a switch, a dimmer output a light with brightness.
+      A relay or dimmer module has a front button per output, and programs
+      commonly flip output n on front button n: such an output is switched by
+      a press of that button first (only when it is not in the wanted state),
+      and by a value written into it when the press changes nothing. An LED
+      and a brightness are written directly. The output is read back each time.
 
     Needs the program's I/O layout (it says where the buttons are). Returns the
     entities and the entries of the inputs that are pressed.
@@ -1243,12 +1246,16 @@ def _add_press_entities(
     pressed: dict[str, PubEntry] = {}
     added: list[EntitySpec] = []
     front_buttons: dict[str, list[PlacedChannel]] = defaultdict(list)
-    outputs: dict[str, list[PlacedChannel]] = defaultdict(list)
+    switched: dict[str, list[PlacedChannel]] = defaultdict(list)
+    outputs: list[PlacedChannel] = []
     for channel in channels:
         if channel.role == "local_switch":
             front_buttons[channel.module].append(channel)
         elif channel.role in ("relay", "dimmer"):
-            outputs[channel.module].append(channel)
+            switched[channel.module].append(channel)
+            outputs.append(channel)
+        elif channel.role == "led":
+            outputs.append(channel)
         if channel.role != "button":
             continue
         index = shown.get((channel.register, channel.address, channel.bit))
@@ -1269,41 +1276,46 @@ def _add_press_entities(
             )
         )
 
-    for module, module_outputs in outputs.items():
+    front_button_of: dict[str, PlacedChannel] = {}
+    for module, module_outputs in switched.items():
         buttons = front_buttons.get(module, [])
-        if len(buttons) != len(module_outputs):
-            continue  # no front button per output: nothing says which is whose
-        for button, output in zip(buttons, module_outputs):
-            place = (output.register, output.address, output.bit)
-            index = shown.get(place)
-            if place in commanded or index is None:
-                continue
-            spec = specs[index]
-            entry = _press_entry(button)
-            if spec.platform == "binary_sensor":
-                specs[index] = replace(
-                    spec,
-                    platform="switch",
-                    device_class="outlet" if "plug" in spec.name.lower() else None,
-                    press_name=entry.name,
-                )
-            elif spec.platform == "sensor":
-                added.append(
-                    EntitySpec(
-                        key=output.key + PRESS_SWITCH_KEY_SUFFIX,
-                        platform="switch",
-                        name=spec.name,
-                        state_name=spec.state_name,
-                        value_kind=spec.value_kind,
-                        enabled_by_default=spec.enabled_by_default,
-                        device_key=spec.device_key,
-                        transform_read=spec.transform_read,
-                        from_program=True,
-                        press_name=entry.name,
-                    )
-                )
-            else:
-                continue
+        if len(buttons) == len(module_outputs):
+            # otherwise there is no front button per output: nothing says which is whose
+            front_button_of.update(
+                (output.key, button) for button, output in zip(buttons, module_outputs)
+            )
+
+    for output in outputs:
+        place = (output.register, output.address, output.bit)
+        index = shown.get(place)
+        if place in commanded or index is None:
+            continue
+        spec = specs[index]
+        button = front_button_of.get(output.key)
+        entry = _press_entry(button) if button is not None else None
+        press_name = entry.name if entry is not None else None
+        if spec.platform == "binary_sensor":
+            specs[index] = replace(
+                spec,
+                platform="switch",
+                device_class="outlet" if "plug" in spec.name.lower() else None,
+                press_name=press_name,
+                direct_output=True,
+            )
+        elif spec.platform == "sensor" and output.role == "dimmer":
+            specs[index] = replace(
+                spec,
+                platform="light",
+                device_class=None,
+                native_unit_of_measurement=None,
+                supports_brightness=True,
+                brightness_scale=100.0,
+                press_name=press_name,
+                direct_output=True,
+            )
+        else:
+            continue
+        if entry is not None:
             pressed[entry.name] = entry
     return tuple(specs + added), pressed
 
