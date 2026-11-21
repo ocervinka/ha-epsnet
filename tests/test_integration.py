@@ -807,6 +807,60 @@ async def test_setup_file_naming_no_module_is_questioned_but_can_be_used(
     assert [e["name"] for e in entry.data["map"]["entries"]] == ["unrelated_counter"]
 
 
+async def test_an_entry_on_a_file_naming_no_module_takes_another_such_file(
+    hass: HomeAssistant, tmp_path
+) -> None:
+    """A program that publishes only its own variables: its user chose to use the
+    file at setup, so a shorter one loaded later is not "another project"."""
+    from homeassistant.helpers import entity_registry as er
+
+    async def _no_map(*_a, **_k):
+        await asyncio.sleep(0)
+        return ("SIM PLC", ())
+
+    both = "boiler_setpoint R F 200 REAL PUB_INOUT\nunrelated_counter R W 100 INT PUB_INOUT\n"
+    with _patch_client(AsyncMock()), patch(
+        f"{_CLIENT}.async_fetch_pub_from_plc", AsyncMock(side_effect=_no_map)
+    ):
+        result = await _finish_progress(hass, await _pick_found_plc(hass))
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"next_step_id": "upload"}
+        )
+        with _patch_upload(both, tmp_path):
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"], {"map_file": "0123456789abcdef0123456789abcdef"}
+            )
+            result = await _finish_progress(hass, result)
+        assert result["step_id"] == "file_no_match"
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"next_step_id": "use_file"}
+        )
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+        entry = result["result"]
+        registry = er.async_get(hass)
+        variables = lambda: sorted(  # noqa: E731
+            item.unique_id.removeprefix(f"{entry.entry_id}_")
+            for item in er.async_entries_for_config_entry(registry, entry.entry_id)
+            if "unrelated_counter" in item.unique_id or "boiler_setpoint" in item.unique_id
+        )
+        assert len(variables()) == 2
+
+        result = await _open_reimport_file_form(hass)
+        with _patch_upload("boiler_setpoint R F 200 REAL PUB_INOUT\n", tmp_path):
+            result = await hass.config_entries.options.async_configure(
+                result["flow_id"], {"map_file": "0123456789abcdef0123456789abcdef"}
+            )
+        await hass.async_block_till_done()
+        result = await hass.config_entries.options.async_configure(result["flow_id"])
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+
+    assert [e["name"] for e in entry.data["map"]["entries"]] == ["boiler_setpoint"]
+    # the variable left out was never enabled: its entity goes with it
+    assert len(variables()) == 1 and "boiler_setpoint" in variables()[0]
+
+
 FREE_NAMES = """
 KitchenDoorButton X B 4 .0 BOOL PUB_OUT
 HallTemperature X F 5 REAL PUB_OUT

@@ -99,7 +99,9 @@ stejné proměnné. Po načtení ukáže, kolik proměnných přibylo, ubylo a k
 Totéž jde udělat kdykoli ručně: **Nastavit → Znovu načíst názvy proměnných z PLC**, nebo **Načíst
 názvy proměnných ze souboru .pub**, když v PLC názvy nejsou nebo jsou zastaralé (program nahraný
 z Mosaicu). Integrace i ID entit zůstanou. Pokud se názvy opravdu změnily, objeví se upozornění
-v Opravách. Soubor, který neodpovídá žádnému modulu PLC, integrace odmítne. V **Nastavit → Rychlost
+v Opravách. Soubor, který neodpovídá žádnému modulu PLC, integrace odmítne. Výjimkou je případ,
+kdy žádnému modulu neodpovídají ani dosavadní názvy (takový soubor jste si při nastavení zvolili):
+pak ho nový soubor nahradí, třeba kratší, jen s proměnnými, které chcete. V **Nastavit → Rychlost
 čtení** lze změnit
 pauzu po přečtení všech hodnot (výchozí 500 ms) a interval čtení tlačítek a čidel (u nových
 instalací 100 ms); formulář ukazuje i doby čtení změřené na vaší instalaci.

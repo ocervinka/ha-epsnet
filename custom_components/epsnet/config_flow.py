@@ -930,12 +930,32 @@ class ReimportSteps(ProgressSteps):
             # Never replace a working map with an empty one.
             self._error = "no_map"
             return self.async_show_progress_done(next_step_id="init")
-        if from_file and not _file_names_a_module(self._result):
+        if (
+            from_file
+            and not _file_names_a_module(self._result)
+            and not self._names_in_use_belong_to_no_module()
+        ):
             # Nothing in the file pairs with a module this PLC has: almost
             # certainly the wrong project. Keep the working map and ask again.
             self._error = "pub_no_match"
             return self.async_show_progress_done(next_step_id="reimport_file")
         return self.async_show_progress_done(next_step_id="reimport_done")
+
+    def _names_in_use_belong_to_no_module(self) -> bool:
+        """True when the entry already runs on a file that names no module.
+
+        Its user chose to use such a file (a program that publishes only its
+        own variables). Another file of the same kind, for instance a shorter
+        one, is then no sign of a wrong project.
+        """
+        entry = self._reimport_config_entry()
+        runtime = (self.hass.data.get(DOMAIN) or {}).get(entry.entry_id)
+        catalog = getattr(runtime, "catalog", None)
+        if catalog is None or not (entry.data.get(CONF_MAP) or {}).get("entries"):
+            return False  # no file in use (or not running): nothing was chosen
+        return catalog.channels_named_by_map == 0 and not any(
+            not entity.from_program and not entity.variable for entity in catalog.entities
+        )
 
     def _resolve_reimport_client(self) -> tuple[EpsnetUdpClient, bool]:
         """Return (client, owns_it). Reuse the LIVE runtime client so its lock
