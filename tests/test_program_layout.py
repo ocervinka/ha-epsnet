@@ -251,6 +251,21 @@ def test_session_reader_never_raises():
     assert layout.error == "program image not found in the memory map"
 
 
+def test_an_unknown_program_image_leaves_what_the_memory_areas_start_with():
+    """For the diagnostics: enough to see what another firmware keeps there."""
+    image, _tables = build_program([HOUSE])
+    other_kind = b"\x00\x32" + image[2:]
+    client = _client_on_memory({IMAGE_AT: other_kind})
+    layout = client._read_program_layout_on_socket(None, (IMAGE_AT, OTHER[0], TABLES_AT))
+    assert layout.error == "program image not found in the memory map"
+    assert layout.notes == (
+        f"0x400f0000: starts with {other_kind[:0x30].hex()}",
+        "0x40010000: read refused: unmapped",
+        "0x07050000: read refused: unmapped",
+    )
+    assert layout_snapshot(layout)["notes"] == list(layout.notes)
+
+
 def test_diagnostics_compare_the_stored_map():
     from custom_components.epsnet.diagnostics import program_layout_vs_map
 

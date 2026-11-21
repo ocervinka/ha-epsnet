@@ -48,6 +48,8 @@ The integration currently knows the data layout of:
 - `C-IT-0200I`
 - `C-RC-0011R` (temperature, humidity, external temperature, buttons; laid out from its device
   description, not yet tested on a real installation)
+- `C-IR-0303M` (3 inputs, 3 analog inputs shown as temperatures, 3 relay outputs; laid out from
+  its device description, not yet tested on a real installation)
 
 ## Installation
 

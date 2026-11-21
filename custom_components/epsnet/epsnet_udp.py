@@ -718,13 +718,24 @@ def _parse_group_devices(
         )
         for index in range(0, _DISCOVERY_SLOT_COUNT * 2, 2)
     )
-    occupied_count = sum(slot != 0x7F for slot in slot_map)
-    child_tokens = _extract_child_tokens(chunk2, occupied_count)
-    slot_by_runtime_index = {
-        runtime_index: slot_index
-        for slot_index, runtime_index in enumerate(slot_map)
-        if runtime_index != 0x7F
+    occupied = {
+        slot_index: value for slot_index, value in enumerate(slot_map) if value != 0x7F
     }
+    occupied_count = len(occupied)
+    child_tokens = _extract_child_tokens(chunk2, occupied_count)
+    if sorted(occupied.values()) == list(range(occupied_count)):
+        # the slot map gives, for each position on the bus, the module's place
+        # in the tables that follow (type codes, child records)
+        slot_by_runtime_index = {value: slot_index for slot_index, value in occupied.items()}
+    else:
+        # Another numbering, not understood yet (seen with a newer firmware:
+        # eleven positions holding 2..12 over tables of ten modules). The tables
+        # themselves still list the modules, so they are taken from there. Where
+        # each sits on the bus stays unknown; its place in the tables stands in
+        # for the slot.
+        slot_by_runtime_index = {
+            index: index for index, code in enumerate(type_codes) if code
+        }
     devices = tuple(
         RuntimeDiscoveredDevice(
             key=f"group_{group_token:08x}_slot_{slot_by_runtime_index[runtime_index]:02d}",
@@ -1643,16 +1654,23 @@ class EpsnetUdpClient:
 
         try:
             image_address = header = None
+            # what each memory area starts with, kept for the diagnostics when
+            # none of them is a program image this code knows
+            seen: list[str] = []
             for token in ordered(_PROGRAM_IMAGE_ENTRY):
                 try:
                     candidate = read(token, 0x30)
-                except EpsnetProtocolError:
+                except EpsnetProtocolError as err:
+                    seen.append(f"{token:#010x}: read refused: {err}")
                     continue
                 if len(candidate) == 0x30 and struct.unpack_from(">H", candidate)[0] == IMAGE_MAGIC:
                     image_address, header = token, candidate
                     break
+                seen.append(f"{token:#010x}: starts with {candidate.hex()}")
             if image_address is None or header is None:
-                return ProgramIoLayout(error="program image not found in the memory map")
+                return ProgramIoLayout(
+                    error="program image not found in the memory map", notes=tuple(seen)
+                )
             table_limit = struct.unpack_from(">H", header, 0x26)[0]
             word_table = struct.unpack_from(">H", header, 0x1A)[0]
             index = read(image_address + word_table, 2 * _TABLE_AREA_PROBES)

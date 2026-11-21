@@ -23,7 +23,7 @@ from custom_components.epsnet.runtime_registry import lookup_runtime_model_info
 from tests.test_program_layout import DEVICE, MASTER, _master, build_program
 
 TABLES_AT = 0x07050000
-WSB, RELAY, DIMMER, CIT = 0x0C36, 0x0C4F, 0x0C1D, 0x0CED
+WSB, RELAY, DIMMER, CIT, CIR = 0x0C36, 0x0C4F, 0x0C1D, 0x0CED, 0x0D20
 
 
 def _layout(program):
@@ -179,6 +179,50 @@ def test_sensor_interface_layout():
     assert (ai2.address, ai2.data_type) == (5, "REAL")
     own = catalog.entries_by_name["io_0_2_3309_0007_internal_temperature"]
     assert own.address == 9
+
+
+def test_input_output_module_layout():
+    """C-IR-0303M: a word of inputs, a status byte, three analog values / relays."""
+    program = _master(
+        lines=((DEVICE, 3360, 0x5A6B, 9, 1),),
+        conv_in=bytes([0x02, 0x01, 0x93, 0x93, 0x93]),
+        conv_out=bytes([0x01]),
+    )
+    catalog = build_catalog((), _inventory(_layout(program), [CIR]))
+    assert catalog.program_report[0]["problems"] == []
+    entities = _by_key(catalog)
+
+    def place(key):
+        entry = catalog.entries_by_name[entities[key].state_name]
+        return entry.register, entry.address - base[entry.register], entry.bit
+
+    base = {
+        "X": catalog.entries_by_name["io_0_2_3360_5a6b_input_di1"].address,
+        "Y": catalog.entries_by_name["io_0_2_3360_5a6b_relay_do1"].address,
+    }
+    assert place("io_0_2_3360_5a6b_input_di3") == ("X", 0, 2)
+    assert place("io_0_2_3360_5a6b_input_click1") == ("X", 0, 4)
+    assert place("io_0_2_3360_5a6b_input_press3") == ("X", 1, 2)
+    assert place("io_0_2_3360_5a6b_tamper_1") == ("X", 1, 4)
+    assert place("io_0_2_3360_5a6b_status_man") == ("X", 2, 6)
+    assert place("io_0_2_3360_5a6b_analog_1") == ("X", 3, None)
+    assert place("io_0_2_3360_5a6b_analog_3") == ("X", 11, None)
+    assert entities["io_0_2_3360_5a6b_analog_2"].device_class == "temperature"
+    # no command variables: a relay is a switch that writes its output
+    relay = entities["io_0_2_3360_5a6b_relay_do3"]
+    assert (relay.platform, relay.direct_output, relay.press_name) == ("switch", True, None)
+    assert place("io_0_2_3360_5a6b_relay_do3") == ("Y", 0, 2)
+    assert catalog.devices_by_key[relay.device_key].name == "C-IR-0303M 5A6B"
+
+
+def test_input_output_module_with_parts_switched_off():
+    """Only the status byte and one analog input are used in the program."""
+    program = _master(lines=((DEVICE, 3360, 0x5A6B, 3, 0),), conv_in=bytes([0x01, 0x93]))
+    catalog = build_catalog((), _inventory(_layout(program), [CIR]))
+    assert catalog.program_report[0]["problems"] == []
+    keys = {key.removeprefix("io_0_2_3360_5a6b_") for key in _by_key(catalog)}
+    assert "analog_1" in keys and "status_vld1" in keys
+    assert not any(key.startswith(("input_", "relay_", "analog_2")) for key in keys)
 
 
 def test_fingerprint_ignores_raw_bytes_but_not_the_layout():

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .devices.c_ir_0303m import MODEL_INFO as C_IR_0303M
 from .devices.c_it_0200i import MODEL_INFO as C_IT_0200I
 from .devices.c_rc_0011r import MODEL_INFO as C_RC_0011R
 from .devices.da2_22m import MODEL_INFO as DA2_22M
@@ -14,6 +15,7 @@ from .devices.wsb2_40 import MODEL_INFO as WSB2_40
 from .models import RuntimeModelInfo
 
 _RUNTIME_MODEL_INFOS = (
+    C_IR_0303M,
     C_IT_0200I,
     C_RC_0011R,
     DA2_22M,

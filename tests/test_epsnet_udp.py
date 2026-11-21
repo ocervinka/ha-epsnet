@@ -1024,3 +1024,40 @@ def test_search_without_an_answer_finds_nothing() -> None:
         silent.bind(("127.0.0.1", 0))
         port = silent.getsockname()[1]
         assert epsnet_udp._search_blocking(("127.0.0.1",), port, 0.1) == []
+
+
+def _group_chunks(slot_values: list[int], codes: list[int]) -> tuple[bytes, bytes]:
+    """The two chunks of a CIB group record: slot map, type codes, child tokens."""
+    slot_map = bytes(slot_values + [0x7F] * (32 - len(slot_values)))
+    type_codes = b"".join(c.to_bytes(2, "big") for c in codes + [0] * (32 - len(codes)))
+    chunk1 = bytes([0, 0, 0x11, len(codes), 0, 0, 0, 0]) + slot_map + type_codes
+    chunk1 += bytes(0xDC - len(chunk1))
+    tokens = b"".join((0x40016000 + 0x76 * i).to_bytes(4, "big") for i in range(32))
+    chunk2 = bytes.fromhex("1001" * 6) + tokens + bytes(0xAC - 12 - 128)
+    return chunk1, chunk2
+
+
+def _group_devices(slot_values: list[int], codes: list[int]):
+    chunk1, chunk2 = _group_chunks(slot_values, codes)
+    return epsnet_udp._parse_group_devices(
+        group_token=0x40013C14, label="CIB I/O BUS", marker=8, kind=4, chunk1=chunk1, chunk2=chunk2
+    )[2]
+
+
+def test_slot_map_gives_each_position_its_place_in_the_tables() -> None:
+    devices = _group_devices([2, 0, 1], [0x0C25, 0x0C36, 0x0D31])
+    assert [(d.runtime_index, d.slot_index, d.model) for d in devices] == [
+        (0, 1, "IM2-140M"), (1, 2, "WSB2-40"), (2, 0, "C-RC-0011R")]
+    assert devices[2].key == "group_40013c14_slot_00"
+
+
+def test_modules_come_from_the_tables_when_the_slot_map_is_numbered_another_way() -> None:
+    """A newer firmware: four positions holding 2..5 over tables of three modules."""
+    devices = _group_devices([5, 2, 4, 3], [0x0D20, 0x0D31, 0x0D31])
+    # every module of the tables, with its own type and child record; none is
+    # made up for a number the tables do not have
+    assert [(d.runtime_index, d.model) for d in devices] == [
+        (0, "C-IR-0303M"), (1, "C-RC-0011R"), (2, "C-RC-0011R")]
+    assert [d.child_token for d in devices] == [0x40016000, 0x40016076, 0x400160EC]
+    # the position on the bus is not known: the place in the tables stands in
+    assert [d.slot_index for d in devices] == [0, 1, 2]
