@@ -167,10 +167,10 @@ sám nenastavuje.
 Výstup, který povelové proměnné má, se ovládá přes ně, nikdy těmito způsoby. Ve vlastním programu
 stačí pro každý výstup jeden řádek, který ho tlačítkem na modulu přepne. Změřeno na centrální
 jednotce CU2-01M (firmware 7.2): stisk s programem z FoxToolu i s ručně psanými programy, na
-modulech SA2-012M, SA2-04M/Sn a DA2-22M; zápis do výstupu s ručně psaným programem, na jednom relé
-(hodnota zůstala) a na jedné LED, kterou program nastavuje (hodnota nezůstala). Zápis úrovně do
-výstupu stmívače zatím na PLC vyzkoušený není. Jiné CPU nebo firmware se může chovat jinak; dejte
-prosím vědět, co pozorujete.
+modulech SA2-012M, SA2-04M/Sn a DA2-22M; zápis do výstupu s ručně psanými programy. Kde program
+výstup nenastavuje, hodnota zůstala: u relé, u LED i u výstupu stmívače (úrovně 40 % a 70 %). Kde
+ho program nastavuje, hodnota nezůstala a entita to ohlásila: u LED a u výstupu stmívače. Jiné CPU
+nebo firmware se může chovat jinak; dejte prosím vědět, co pozorujete.
 
 **Ostatní proměnné programu.** Všechno ostatní, co program zveřejňuje (příznaky, režimy, žádané
 hodnoty, povely pod vlastními názvy), nabídne integrace jako entity, které přímo odpovídají hodnotě

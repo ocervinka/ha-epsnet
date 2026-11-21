@@ -181,10 +181,11 @@ a program that leaves that output alone.
 An output that has command variables is controlled through them, never in these ways. In a
 program you write yourself, one line per output that flips it on its front button is enough.
 Measured on a CU2-01M central unit (firmware 7.2): the press with a FoxTool program and with
-hand-written ones, on the SA2-012M, SA2-04M/Sn and DA2-22M modules; the written output with a
-hand-written program, on one relay (it stayed) and one LED the program assigns (it did not).
-Writing a level into a dimmer output has not been tried on a PLC yet. Another CPU or firmware may
-behave differently; please report what you see.
+hand-written ones, on the SA2-012M, SA2-04M/Sn and DA2-22M modules; the written output with
+hand-written programs. Where the program leaves the output alone, the value stayed: a relay, an
+LED and a dimmer output (levels of 40 % and 70 %). Where the program assigns the output, it did
+not stay and the entity said so: an LED and a dimmer output. Another CPU or firmware may behave
+differently; please report what you see.
 
 **The program's other variables.** Whatever else the program publishes (flags, modes, setpoints,
 commands under names of its own) is offered as an entity that is simply the variable's value. These
