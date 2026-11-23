@@ -24,7 +24,13 @@ from .models import (
     RuntimeModelInfo,
     ValueKind,
 )
-from .program_layout import ProgramDevice, ProgramIoLayout, ProgramItem, ProgramMaster
+from .program_layout import (
+    ProgramDevice,
+    ProgramIoLayout,
+    ProgramItem,
+    ProgramMaster,
+    copied_type,
+)
 from .runtime_registry import RUNTIME_MODEL_INFOS_BY_CODE
 
 # Where a scanned module's record points at its settings table (BE32 address).
@@ -167,13 +173,12 @@ def module_places(
     return tuple(places)
 
 
-def _fits(definition: ModuleItem, item: ProgramItem) -> bool:
+def _plain_width(definition: ModuleItem) -> int | None:
+    """Bytes a flags or single-byte item takes; None for a converted value."""
     bits = [c.bit for c in definition.channels if c.bit is not None]
     if bits:
-        return item.value_type != "REAL" and max(bits) // 8 < item.size
-    if definition.byte_value:
-        return item.value_type == "BYTE"
-    return item.value_type in ("REAL", "WORD")
+        return max(bits) // 8 + 1
+    return 1 if definition.byte_value else None
 
 
 def _match_items(
@@ -183,25 +188,60 @@ def _match_items(
     *,
     extra_ignored: bool,
 ) -> tuple[list[tuple[ModuleItem, ProgramItem]], str | None]:
-    """Pair the descriptor's items with the program's, in order."""
-    if not any(i.optional for i in items) and not extra_ignored:
-        if len(items) != len(placed):
-            return [], (
-                f"{direction}: the program has {len(placed)} data items, "
-                f"the module type {len(items)}"
-            )
+    """Pair the descriptor's items with the program's, in order.
+
+    The program copies flags and single bytes as they are and may join
+    neighbours into one item, so such a descriptor item takes its bytes from
+    the program's item and the next one goes on where it ended. A value takes
+    a whole item. The place of a switched-off value takes the descriptor's
+    value with it: no entity.
+    """
     pairs: list[tuple[ModuleItem, ProgramItem]] = []
-    cursor = 0
+    cursor = 0  # the program's item
+    used = 0  # bytes of it that earlier descriptor items took
     for definition in items:
-        if cursor < len(placed) and _fits(definition, placed[cursor]):
-            pairs.append((definition, placed[cursor]))
-            cursor += 1
-        elif not definition.optional:
+        width = _plain_width(definition)
+        matched = False
+        while cursor < len(placed):
+            item = placed[cursor]
+            if not item.raw_size:
+                if width is None:
+                    cursor += 1
+                    matched = True
+                break
+            if width is not None and item.value_type != "REAL" and used + width <= item.size:
+                pairs.append((
+                    definition,
+                    replace(
+                        item,
+                        address=item.address + used,
+                        size=width,
+                        value_type=copied_type(width),
+                    ),
+                ))
+                used += width
+                if used == item.size:
+                    cursor, used = cursor + 1, 0
+                matched = True
+                break
+            if used:
+                # the rest of this item is not described: on to the next one
+                cursor, used = cursor + 1, 0
+                continue
+            if width is None and item.value_type in ("REAL", "WORD"):
+                pairs.append((definition, item))
+                cursor += 1
+                matched = True
+            break
+        if not matched and not definition.optional:
             item = placed[cursor] if cursor < len(placed) else None
             where = f"{item.zone}{item.address}" if item else "the end"
             return [], f"{direction}: item at {where} does not fit the module type"
-    if cursor < len(placed) and not extra_ignored:
-        return [], f"{direction}: {len(placed) - cursor} data item(s) more than the module type"
+    if used:
+        cursor += 1
+    more = sum(1 for item in placed[cursor:] if item.raw_size)
+    if more and not extra_ignored:
+        return [], f"{direction}: {more} data item(s) more than the module type"
     return pairs, None
 
 

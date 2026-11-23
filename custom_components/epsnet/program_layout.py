@@ -61,16 +61,42 @@ class Conversion:
     scale: float | None = None
 
 
-# Verified against real programs from both programming tools.
+# A code up to this copies that many bytes as they are. One code can cover
+# several neighbouring items of a module: some programming tools join them.
+_COPY_MAX = 0x3F
+
+# The other codes convert between a value on the bus and a REAL in X/Y. The
+# sizes of 44, 93, 94, 95, C1 and C2 were seen in real programs; those of the
+# rest come from the manufacturer's descriptions of the modules that use them.
+# A wrong raw size would show: a module's codes must cover exactly the raw
+# bytes its line declares, and the reading stops at the module where they do not.
 CONVERSIONS: dict[int, Conversion] = {
-    0x01: Conversion(1, 1, "BYTE"),
-    0x02: Conversion(2, 2, "WORD"),
-    0x03: Conversion(3, 3, "BYTES3"),
+    0x82: Conversion(1, 4, "REAL"),
+    0x83: Conversion(2, 4, "REAL"),
+    0x84: Conversion(2, 4, "REAL"),
     0x93: Conversion(2, 4, "REAL", 0.01),
-    0x95: Conversion(2, 4, "REAL", 0.1),
     0x94: Conversion(2, 4, "REAL"),
+    0x95: Conversion(2, 4, "REAL", 0.1),
+    0x96: Conversion(2, 4, "REAL"),
     0xC1: Conversion(1, 4, "REAL"),
+    0xC2: Conversion(1, 4, "REAL"),
+    0xD5: Conversion(2, 4, "REAL"),
+    0xD6: Conversion(2, 4, "REAL"),
+    # The place of a value whose part of the module is switched off in the
+    # program: four bytes in X/Y, nothing on the bus.
+    0x44: Conversion(0, 4, "REAL"),
 }
+
+def copied_type(size: int) -> str:
+    """The type name of ``size`` bytes copied as they are."""
+    return {1: "BYTE", 2: "WORD"}.get(size, f"BYTES{size}")
+
+
+def conversion_for(code: int) -> Conversion | None:
+    """What a conversion code does; None for a code that is not known."""
+    if 1 <= code <= _COPY_MAX:
+        return Conversion(code, code, copied_type(code))
+    return CONVERSIONS.get(code)
 
 
 class ProgramLayoutError(ValueError):
@@ -93,7 +119,7 @@ class ProgramItem:
     zone: str
     address: int
     size: int
-    raw_size: int
+    raw_size: int  # 0: the place of a value that is switched off in the program
     code: int
     value_type: str
     scale: float | None = None
@@ -352,12 +378,16 @@ def _walk(
             continue
         consumed = 0
         placed: list[ProgramItem] = []
-        while consumed < raw_len:
+        while True:
+            conversion = conversion_for(codes[cursor]) if cursor < len(codes) else None
+            if consumed >= raw_len and (conversion is None or conversion.raw_size):
+                # every raw byte has its code; a code that takes none (a
+                # switched-off value) still belongs to this module
+                break
             if cursor >= len(codes):
                 stopped = f"{direction}: conversion table ends early"
                 break
             code = codes[cursor]
-            conversion = CONVERSIONS.get(code)
             if conversion is None:
                 stopped = f"{direction}: unknown conversion code {code:#04x}"
                 break
@@ -630,7 +660,8 @@ def layout_snapshot(layout: ProgramIoLayout) -> dict[str, object]:
 
     def item(i: ProgramItem) -> str:
         scale = f" x{i.scale:g}" if i.scale else ""
-        return f"{i.direction} {i.zone}{i.address} {i.value_type}{scale} code {i.code:02x}"
+        unused = "" if i.raw_size else ", switched off"
+        return f"{i.direction} {i.zone}{i.address} {i.value_type}{scale} code {i.code:02x}{unused}"
 
     return {
         "error": layout.error,

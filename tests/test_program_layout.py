@@ -142,7 +142,7 @@ def test_unknown_code_stops_only_from_that_device_on():
             (DEVICE, SENSOR_IF, 2, 5, 0),
             (DEVICE, WALL_SWITCH, 3, 3, 1),
         ),
-        conv_in=bytes([0x01, 0x93, 0x01, 0x95, 0x95, 0x44, 0x01, 0x93]),
+        conv_in=bytes([0x01, 0x93, 0x01, 0x95, 0x95, 0xEE, 0x01, 0x93]),
         conv_out=bytes([0x01, 0x01]),
     )
     first, sensor, last = _decode(build_program([program])).masters[0].devices
@@ -150,9 +150,52 @@ def test_unknown_code_stops_only_from_that_device_on():
     # the sensor's raw bytes are covered before the unknown code is reached
     assert not sensor.unsupported
     assert _addresses(sensor)[1:] == [("in", "X6", "REAL", 0.1), ("in", "X10", "REAL", 0.1)]
-    assert last.unsupported == ("in: unknown conversion code 0x44",)
+    assert last.unsupported == ("in: unknown conversion code 0xee",)
     # outputs do not depend on the input table
     assert _addresses(last) == [("out", "Y1", "BYTE", None)]
+
+
+def test_a_copy_code_is_the_number_of_bytes_it_copies():
+    # a programming tool that joins a module's plain items: 5 bytes in, 24 out
+    program = _master(
+        lines=((DEVICE, 3377, 1, 11, 24), (DEVICE, 3377, 2, 11, 24)),
+        conv_in=bytes([0x01, 0x95, 0x01, 0x95, 0x05] * 2),
+        conv_out=bytes([0x18, 0x18]),
+    )
+    first, second = _decode(build_program([program])).masters[0].devices
+    assert not first.unsupported and not second.unsupported
+    assert _addresses(first)[4:] == [("in", "X10", "BYTES5", None), ("out", "Y0", "BYTES24", None)]
+    assert _addresses(second)[0] == ("in", "X15", "BYTE", None)
+    assert _addresses(second)[-1] == ("out", "Y24", "BYTES24", None)
+
+
+def test_a_switched_off_value_keeps_its_place_without_raw_bytes():
+    program = _master(
+        lines=((DEVICE, 3360, 1, 3, 1), (DEVICE, WALL_SWITCH, 2, 3, 1)),
+        conv_in=bytes([0x03, 0x44, 0x44, 0x44, 0x01, 0x93]),
+        conv_out=bytes([0x01, 0x01]),
+    )
+    layout = _decode(build_program([program]))
+    module, switch = layout.masters[0].devices
+    assert not module.unsupported and not switch.unsupported
+    assert [(i.address, i.size, i.raw_size) for i in module.items if i.direction == "in"] == [
+        (0, 3, 3), (3, 4, 0), (7, 4, 0), (11, 4, 0)]
+    # the next module starts after the three places
+    assert _addresses(switch)[0] == ("in", "X15", "BYTE", None)
+    items = layout_snapshot(layout)["masters"][0]["devices"][0]["items"]
+    assert items[1] == "in X3 REAL code 44, switched off"
+
+
+def test_an_analog_output_is_a_real_made_of_one_raw_byte():
+    program = _master(
+        lines=((DEVICE, 3359, 1, 2, 2), (DEVICE, WALL_SWITCH, 2, 3, 1)),
+        conv_in=bytes([0x02, 0x01, 0x93]),
+        conv_out=bytes([0x01, 0xC2, 0x01]),
+    )
+    module, switch = _decode(build_program([program])).masters[0].devices
+    assert not module.unsupported
+    assert _addresses(module)[1:] == [("out", "Y0", "BYTE", None), ("out", "Y1", "REAL", None)]
+    assert _addresses(switch)[-1] == ("out", "Y5", "BYTE", None)
 
 
 def test_codes_not_matching_the_line_length_are_unsupported():

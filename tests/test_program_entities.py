@@ -164,7 +164,7 @@ def test_layout_not_matching_the_module_type_is_reported():
     )
     catalog = build_catalog((), _inventory(_layout(program), [CIT]))
     (report,) = catalog.program_report
-    assert report["problems"] == ["in: the program has 5 data items, the module type 4"]
+    assert report["problems"] == ["in: 1 data item(s) more than the module type"]
     assert not _by_key(catalog)
 
 
@@ -223,6 +223,55 @@ def test_input_output_module_with_parts_switched_off():
     keys = {key.removeprefix("io_0_2_3360_5a6b_") for key in _by_key(catalog)}
     assert "analog_1" in keys and "status_vld1" in keys
     assert not any(key.startswith(("input_", "relay_", "analog_2")) for key in keys)
+
+
+def test_input_output_module_with_its_flags_joined_and_analog_inputs_switched_off():
+    """One code for the inputs and the status byte, three places of unused values."""
+    program = _master(
+        lines=((DEVICE, 3360, 0x5A6B, 3, 1),),
+        conv_in=bytes([0x03, 0x44, 0x44, 0x44]),
+        conv_out=bytes([0x01]),
+    )
+    catalog = build_catalog((), _inventory(_layout(program), [CIR]))
+    assert catalog.program_report[0]["problems"] == []
+    entities = _by_key(catalog)
+    base = catalog.entries_by_name["io_0_2_3360_5a6b_input_di1"].address
+
+    def place(key):
+        entry = catalog.entries_by_name[entities[key].state_name]
+        return entry.address - base, entry.bit
+
+    assert place("io_0_2_3360_5a6b_input_press3") == (1, 2)
+    assert place("io_0_2_3360_5a6b_tamper_3") == (1, 6)
+    # the status byte is the third byte of the same code
+    assert place("io_0_2_3360_5a6b_status_ouf1") == (2, 0)
+    assert place("io_0_2_3360_5a6b_status_man") == (2, 6)
+    assert not any("analog" in key for key in entities)
+    assert entities["io_0_2_3360_5a6b_relay_do2"].platform == "switch"
+
+
+def test_flag_items_joined_into_one_code_keep_their_bytes():
+    # a dimmer whose inputs and local switches come as one two-byte code
+    program = _master(
+        lines=((DEVICE, 3101, 0x3C4D, 2, 2),),
+        conv_in=bytes([0x02]),
+        conv_out=bytes([0xC1, 0xC1]),
+    )
+    catalog = build_catalog((), _inventory(_layout(program), [DIMMER]))
+    assert catalog.program_report[0]["problems"] == []
+    in2 = catalog.entries_by_name["io_0_2_3101_3c4d_input_in2"]
+    sw2 = catalog.entries_by_name["io_0_2_3101_3c4d_local_sw2"]
+    assert (in2.address, in2.bit) == (0, 1)
+    assert (sw2.address, sw2.bit) == (1, 1)
+
+
+def test_sensor_interface_with_its_own_thermometer_switched_off():
+    program = _master(lines=((DEVICE, 3309, 7, 5, 0),), conv_in=bytes([0x01, 0x93, 0x93, 0x44]))
+    catalog = build_catalog((), _inventory(_layout(program), [CIT]))
+    assert catalog.program_report[0]["problems"] == []
+    keys = {key.removeprefix("io_0_2_3309_0007_") for key in _by_key(catalog)}
+    assert {"analog_1", "analog_2"} <= keys
+    assert "internal_temperature" not in keys
 
 
 def test_fingerprint_ignores_raw_bytes_but_not_the_layout():
@@ -357,8 +406,12 @@ CRC = 0x0D31
         # external thermometer switched off in the program
         (bytes([0x01, 0x95, 0x01, 1, 1, 1, 1, 1]), 9,
          {"temperature": ("X", 1, "REAL"), "humidity": ("X", 5, "USINT")}),
+        # the internal data as one code
+        (bytes([0x01, 0x95, 0x01, 0x95, 0x05]), 11,
+         {"temperature": ("X", 1, "REAL"), "humidity": ("X", 5, "USINT"),
+          "external_temperature": ("X", 6, "REAL")}),
         # an unknown code in the internal data: what comes before it is still placed
-        (bytes([0x01, 0x95, 0x01, 0x95, 0x44]), 11,
+        (bytes([0x01, 0x95, 0x01, 0x95, 0xEE]), 11,
          {"temperature": ("X", 1, "REAL"), "humidity": ("X", 5, "USINT"),
           "external_temperature": ("X", 6, "REAL")}),
     ],
