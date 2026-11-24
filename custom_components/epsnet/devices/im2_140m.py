@@ -7,7 +7,7 @@ MODEL_INFO = RuntimeModelInfo(
     type_key="generic_input_module",
     subsystem="digital_inputs",
     description="14-channel digital input module",
-    # one 24-bit item: inputs in bits 0-13, tamper contacts in bits 17-23
+    # one 24-bit item: inputs in bits 0-13, tamper contacts in bits 16-22
     inputs=(
         ModuleItem(
             tuple(
@@ -15,7 +15,7 @@ MODEL_INFO = RuntimeModelInfo(
                 for i in range(1, 15)
             )
             + tuple(
-                ModuleChannel(key=f"tamper_{i}", label=f"TAMPER{i}", role="tamper", bit=16 + i)
+                ModuleChannel(key=f"tamper_{i}", label=f"TAMPER{i}", role="tamper", bit=15 + i)
                 for i in range(1, 8)
             )
         ),

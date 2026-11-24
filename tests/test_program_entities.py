@@ -274,6 +274,62 @@ def test_sensor_interface_with_its_own_thermometer_switched_off():
     assert "internal_temperature" not in keys
 
 
+def test_sensor_interface_with_its_own_thermometer_left_out():
+    # its own thermometer switched off, by a tool that leaves its place out
+    program = _master(lines=((DEVICE, 3309, 7, 5, 0),), conv_in=bytes([0x01, 0x93, 0x93]))
+    catalog = build_catalog((), _inventory(_layout(program), [CIT]))
+    assert catalog.program_report[0]["problems"] == []
+    keys = {key.removeprefix("io_0_2_3309_0007_") for key in _by_key(catalog)}
+    assert {"analog_1", "analog_2", "status_vld1"} <= keys
+    assert "internal_temperature" not in keys
+
+
+def test_wall_switch_with_its_thermometer_left_out():
+    program = _master(lines=((DEVICE, 3126, 0x1A2B, 1, 1),), conv_in=b"\x01", conv_out=b"\x01")
+    catalog = build_catalog((), _inventory(_layout(program), [WSB]))
+    assert catalog.program_report[0]["problems"] == []
+    keys = {key.removeprefix("io_0_2_3126_1a2b_") for key in _by_key(catalog)}
+    assert {"button_up1", "button_down2", "led_red2"} <= keys
+    assert "temperature" not in keys
+
+
+@pytest.mark.parametrize(
+    ("hw", "code", "conv_in", "raw_in", "temperature_at"),
+    [
+        (3101, DIMMER, bytes([0x01, 0x01, 0x93]), 4, 2),  # dimmer: inputs, switches, thermometer
+        (3150, 0x0C4E, bytes([0x02, 0x93]), 4, 2),  # input module: inputs and tampers, thermometer
+    ],
+)
+def test_module_with_its_thermometer_switched_on(hw, code, conv_in, raw_in, temperature_at):
+    program = _master(
+        lines=((DEVICE, hw, 0x0042, raw_in, 2 if hw == 3101 else 0),),
+        conv_in=conv_in,
+        conv_out=bytes([0xC1, 0xC1]) if hw == 3101 else b"",
+    )
+    catalog = build_catalog((), _inventory(_layout(program), [code]))
+    assert catalog.program_report[0]["problems"] == []
+    entities = _by_key(catalog)
+    temp = entities[f"io_0_2_{hw}_0042_temperature"]
+    entry = catalog.entries_by_name[temp.state_name]
+    first = min(catalog.entries_by_name[e.state_name].address
+                for e in entities.values() if catalog.entries_by_name[e.state_name].register == "X")
+    assert (entry.address - first, entry.data_type, temp.device_class) == (
+        temperature_at, "REAL", "temperature")
+
+
+def test_input_module_tamper_contacts_follow_the_two_unused_bits():
+    """IM2-140M: inputs in bits 0-13, tamper contacts in bits 16-22 of one 3-byte item."""
+    program = _master(lines=((DEVICE, 3109, 0x0042, 3, 0),), conv_in=bytes([0x03]))
+    catalog = build_catalog((), _inventory(_layout(program), [0x0C25]))
+    assert catalog.program_report[0]["problems"] == []
+    in14 = catalog.entries_by_name["io_0_2_3109_0042_input_in14"]
+    tamper1 = catalog.entries_by_name["io_0_2_3109_0042_tamper_1"]
+    tamper7 = catalog.entries_by_name["io_0_2_3109_0042_tamper_7"]
+    assert in14.bit == 5  # bit 13 of the item
+    assert (tamper1.address - in14.address, tamper1.bit) == (1, 0)
+    assert (tamper7.address - in14.address, tamper7.bit) == (1, 6)
+
+
 def test_fingerprint_ignores_raw_bytes_but_not_the_layout():
     a = _layout(HOUSE)
     assert layout_fingerprint(a) == layout_fingerprint(replace(a, reads={"image": {0: b"x"}}))

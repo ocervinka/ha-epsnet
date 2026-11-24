@@ -1,4 +1,4 @@
-from ..models import ModuleChannel, ModuleItem, RuntimeModelInfo
+from ..models import MathFormula, ModuleChannel, ModuleItem, RuntimeModelInfo, value_item
 
 MODEL_INFO = RuntimeModelInfo(
     unit_code=0x0C4E,
@@ -19,5 +19,7 @@ MODEL_INFO = RuntimeModelInfo(
                 for i in range(1, 3)
             )
         ),
+        # a thermometer, when the program switches it on
+        value_item("temperature", "Temperature", "temperature", MathFormula.DIV_100, optional=True),
     ),
 )

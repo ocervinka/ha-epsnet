@@ -13,6 +13,9 @@ MODEL_INFO = RuntimeModelInfo(
         ),
         value_item("analog_1", "AI1", "analog_temperature", MathFormula.DIV_10),
         value_item("analog_2", "AI2", "analog_temperature", MathFormula.DIV_10),
-        value_item("internal_temperature", "hTHERM", "temperature", MathFormula.DIV_100),
+        # its own thermometer is switched off unless the program turns it on
+        value_item(
+            "internal_temperature", "hTHERM", "temperature", MathFormula.DIV_100, optional=True
+        ),
     ),
 )

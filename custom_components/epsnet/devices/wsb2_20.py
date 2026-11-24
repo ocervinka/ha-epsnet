@@ -9,7 +9,10 @@ MODEL_INFO = RuntimeModelInfo(
     description="2-button wall switch with LEDs and thermostat input",
     inputs=(
         bit_item("button", ("UP1", "DOWN1"), key_prefix="button"),
-        value_item("temperature", "Temperature", "temperature", MathFormula.DIV_100),
+        # the thermometer can be switched off in the program
+        value_item(
+            "temperature", "Temperature", "temperature", MathFormula.DIV_100, optional=True
+        ),
     ),
     outputs=(bit_item("led", ("GREEN1", "RED1"), key_prefix="led"),),
 )
