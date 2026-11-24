@@ -488,6 +488,10 @@ def test_room_controller_variants(conv_in, raw_in, expected):
     assert sum(e.platform == "button" for e in entities.values()) == 5
     assert all(e.platform != "sensor" or e.device_class in ("temperature", "humidity")
                for e in entities.values())
+    # the external temperature starts disabled (often nothing is connected), the rest enabled
+    assert {k.rsplit("5a5a_", 1)[1]: entities[k].enabled_by_default
+            for k in entities if entities[k].platform == "sensor"} == {
+        key: key != "external_temperature" for key in expected}
 
 
 def test_diagnostics_list_bits_two_map_variables_share():

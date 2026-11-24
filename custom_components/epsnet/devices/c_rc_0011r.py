@@ -18,9 +18,10 @@ MODEL_INFO = RuntimeModelInfo(
         ),
         value_item("temperature", "Temperature", "temperature", MathFormula.DIV_10, optional=True),
         value_item("humidity", "Humidity", "humidity", optional=True, byte_value=True),
+        # starts disabled: most controllers have no external sensor connected
         value_item(
             "external_temperature", "External temperature", "temperature", MathFormula.DIV_10,
-            optional=True,
+            optional=True, enabled_by_default=False,
         ),
     ),
     # outputs are the display contents the program writes: not described

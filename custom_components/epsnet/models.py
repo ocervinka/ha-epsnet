@@ -238,7 +238,8 @@ class ModuleChannel:
     ``bit`` is set for flags packed into a byte/word item (bit 0 = lowest bit of
     the item's first byte). Value channels have no bit; ``raw_scale`` is applied
     when the program leaves the item raw (a 16-bit integer instead of a REAL the
-    firmware already scaled).
+    firmware already scaled). ``enabled_by_default`` False: the entity starts
+    disabled (a channel that often has nothing connected).
     """
 
     key: str
@@ -246,6 +247,7 @@ class ModuleChannel:
     role: str
     bit: int | None = None
     raw_scale: MathFormula = MathFormula.NONE
+    enabled_by_default: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -286,9 +288,18 @@ def value_item(
     *,
     optional: bool = False,
     byte_value: bool = False,
+    enabled_by_default: bool = True,
 ) -> ModuleItem:
     return ModuleItem(
-        (ModuleChannel(key=key, label=label, role=role, raw_scale=raw_scale),),
+        (
+            ModuleChannel(
+                key=key,
+                label=label,
+                role=role,
+                raw_scale=raw_scale,
+                enabled_by_default=enabled_by_default,
+            ),
+        ),
         optional=optional,
         byte_value=byte_value,
     )

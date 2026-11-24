@@ -37,7 +37,8 @@ v upozornění v **Opravách**, takže víte, co chybí.
 Podporované moduly: `SA2-04M`, `SA2-012M`, `DA2-22M`, `WSB2-20`, `WSB2-40`, `IM2-40B`,
 `IM2-140M`, `C-IT-0200I`, `C-RC-0011R` (teplota, vlhkost, externí teplota, tlačítka) a `C-IR-0303M`
 (3 vstupy, 3 analogové vstupy zobrazené jako teploty, 3 reléové výstupy). Poslední dva jsou
-doplněné podle popisu modulu a zatím nevyzkoušené na skutečné instalaci.
+doplněné podle popisu modulu a zatím nevyzkoušené na skutečné instalaci. Externí teplota
+ovladače C-RC-0011R je zpočátku zakázaná: povol ji tam, kde je připojené externí čidlo.
 
 ## Instalace
 

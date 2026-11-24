@@ -47,7 +47,8 @@ The integration currently knows the data layout of:
 - `IM2-140M`
 - `C-IT-0200I`
 - `C-RC-0011R` (temperature, humidity, external temperature, buttons; laid out from its device
-  description, not yet tested on a real installation)
+  description, not yet tested on a real installation). The external temperature starts disabled:
+  enable it where an external sensor is connected.
 - `C-IR-0303M` (3 inputs, 3 analog inputs shown as temperatures, 3 relay outputs; laid out from
   its device description, not yet tested on a real installation)
 
